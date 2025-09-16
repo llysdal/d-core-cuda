@@ -5,7 +5,7 @@
 // #include <cuda.h>
 #include <omp.h>
 
-#define BLOCK_NUMS		56
+#define BLOCK_NUMS		54
 #define BLOCK_DIM		1024
 #define WARPS_EACH_BLOCK	(BLOCK_DIM >> 5)
 #define THREAD_COUNT	(BLOCK_DIM * BLOCK_NUMS)

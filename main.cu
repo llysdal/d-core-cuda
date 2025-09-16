@@ -22,17 +22,13 @@ __device__ inline void writeToBuffer(unsigned* buffer, unsigned loc, unsigned va
 	buffer[loc] = val;
 }
 
-__global__ void scan(device_pointers d_p, unsigned k, unsigned level, unsigned V, unsigned* inBuffers, unsigned* inBufferTails, unsigned* outBuffers, unsigned* outBufferTails) {
-	__shared__ unsigned* outBuffer;
-	__shared__ unsigned outBufferTail;
-	__shared__ unsigned* inBuffer;
-	__shared__ unsigned inBufferTail;
+__global__ void scan(device_pointers d_p, unsigned k, unsigned level, unsigned V, unsigned* buffers, unsigned* bufferTails, bool* visited) {
+	__shared__ unsigned* buffer;
+	__shared__ unsigned bufferTail;
 
 	if (IS_MAIN_THREAD) {
-		outBufferTail = 0;
-		outBuffer = outBuffers + blockIdx.x * BUFFER_SIZE;
-		inBufferTail = 0;
-		inBuffer = inBuffers + blockIdx.x * BUFFER_SIZE;
+		bufferTail = 0;
+		buffer = buffers + blockIdx.x * BUFFER_SIZE;
 	}
 	__syncthreads();
 
@@ -40,30 +36,31 @@ __global__ void scan(device_pointers d_p, unsigned k, unsigned level, unsigned V
 	for (unsigned base = 0; base < V; base += THREAD_COUNT) {
 		vertex v = base + global_threadIdx;
 
+		if (visited[v]) continue;
 		if (v >= V) continue;
 
 		if (d_p.out_degrees[v] == level) {
-			unsigned loc = atomicAdd(&outBufferTail, 1);
-			writeToBuffer(outBuffer, loc, v);
+			visited[v] = true;
+			unsigned loc = atomicAdd(&bufferTail, 1);
+			writeToBuffer(buffer, loc, v);
 		}
-		else if (d_p.in_degrees[v] < k) {
-			unsigned loc = atomicAdd(&inBufferTail, 1);
-			writeToBuffer(inBuffer, loc, v);
+		if (d_p.in_degrees[v] < k) {
+			visited[v] = true;
+			unsigned loc = atomicAdd(&bufferTail, 1);
+			writeToBuffer(buffer, loc, v);
 			d_p.out_degrees[v] = level;
 		}
 	}
 	__syncthreads();
 
 	if (IS_MAIN_THREAD) {
-		outBufferTails[blockIdx.x] = outBufferTail;
+		bufferTails[blockIdx.x] = bufferTail;
 	}
 }
 
-__global__ void process(device_pointers d_p, unsigned level, unsigned V, unsigned* inBuffers, unsigned* inBufferTails, unsigned* outBuffers, unsigned* outBufferTails, unsigned int* global_count) {
-	__shared__ unsigned outBufferTail;
-	__shared__ unsigned* outBuffer;
-	__shared__ unsigned* inBuffer;
-	__shared__ unsigned inBufferTail;
+__global__ void process(device_pointers d_p, unsigned k, unsigned level, unsigned V, unsigned* buffers, unsigned* bufferTails, bool* visited, unsigned int* global_count) {
+	__shared__ unsigned bufferTail;
+	__shared__ unsigned* buffer;
 	__shared__ unsigned base;
 	unsigned regTail;
 	unsigned i;
@@ -71,20 +68,16 @@ __global__ void process(device_pointers d_p, unsigned level, unsigned V, unsigne
 	if (IS_MAIN_THREAD) {
 		base = 0;
 
-		outBufferTail = outBufferTails[blockIdx.x];
-		outBuffer = outBuffers + blockIdx.x * BUFFER_SIZE;
-		assert(outBuffer != nullptr);
-
-		inBufferTail = inBufferTails[blockIdx.x];
-		inBuffer = inBuffers + blockIdx.x * BUFFER_SIZE;
-		assert(inBuffer != nullptr);
+		bufferTail = bufferTails[blockIdx.x];
+		buffer = buffers + blockIdx.x * BUFFER_SIZE;
+		assert(buffer != nullptr);
 	}
 
 	while (true) {
 		__syncthreads();
-		if (base == outBufferTail) break;	// every thread exit at the same iteration
+		if (base == bufferTail) break;	// every thread exit at the same iteration
 		i = base + WARP_ID;
-		regTail = outBufferTail;
+		regTail = bufferTail;
 		__syncthreads();
 
 		if (i >= regTail) continue; // this warp won't have to do anything
@@ -95,44 +88,75 @@ __global__ void process(device_pointers d_p, unsigned level, unsigned V, unsigne
 				base = regTail;
 		}
 
-		unsigned v = readFromBuffer(outBuffer, i);
-		unsigned start = d_p.out_neighbors_offset[v];
-		unsigned end   = d_p.out_neighbors_offset[v + 1];
+		unsigned v = readFromBuffer(buffer, i);
+		unsigned inStart	= d_p.in_neighbors_offset[v];
+		unsigned inEnd		= d_p.in_neighbors_offset[v + 1];
+		unsigned outStart	= d_p.out_neighbors_offset[v];
+		unsigned outEnd		= d_p.out_neighbors_offset[v + 1];
 
 		while (true) {
 			__syncwarp();
 
-			if (start >= end) break;
+			bool doIn	= inStart < inEnd;
+			bool doOut	= outStart < outEnd;
 
-			unsigned j = start + LANE_ID;
-			start += WARP_SIZE;
-			if (j >= end) continue;
+			if (!doIn && !doOut) break;
 
-			unsigned u = d_p.out_neighbors[j];
+			if (doOut) {
+				unsigned j = outStart + LANE_ID;
+				outStart += WARP_SIZE;
 
-			if (*(d_p.out_degrees + u) > level) {
-				unsigned a = atomicSub(d_p.out_degrees + u, 1);
+				if (j < outEnd) {
+					unsigned u = d_p.out_neighbors[j];
 
-				if (a == level + 1) {
-					unsigned loc = atomicAdd(&outBufferTail, 1);
-					writeToBuffer(outBuffer, loc, u);
+					if (!visited[u]) {
+						unsigned a = atomicSub(d_p.in_degrees + u, 1);
+
+						if (a <= k) {
+							unsigned loc = atomicAdd(&bufferTail, 1);
+							writeToBuffer(buffer, loc, u);
+
+							*(d_p.out_degrees + u) = level;
+
+							visited[u] = true;
+						}
+					}
 				}
-				else if (a <= level) {
-					// oops we decremented too much
-					atomicAdd(d_p.out_degrees + u, 1);
+			}
+			if (doIn) {
+				unsigned j = inStart + LANE_ID;
+				inStart += WARP_SIZE;
+
+				if (j < inEnd) {
+					unsigned w = d_p.in_neighbors[j];
+
+					if (!visited[w]) {
+						if (*(d_p.out_degrees + w) > level) {
+							unsigned a = atomicSub(d_p.out_degrees + w, 1);
+
+							if (a == level + 1) {
+								unsigned loc = atomicAdd(&bufferTail, 1);
+								writeToBuffer(buffer, loc, w);
+								visited[w] = true;
+							}
+							else if (a <= level) {
+								// oops we decremented too much
+								atomicAdd(d_p.out_degrees + w, 1);
+								visited[w] = true;
+							}
+						}
+					}
 				}
 			}
 		}
 	}
 
-	if (IS_MAIN_THREAD && outBufferTail > 0) {
-		atomicAdd(global_count, outBufferTail);
+	if (IS_MAIN_THREAD && bufferTail > 0) {
+		atomicAdd(global_count, bufferTail);
 	}
 }
 
-void dcore(Graph &g) {
-	// moving to GPU
-	device_pointers d_p;
+void moveGraphToGPU(Graph& g, device_pointers& d_p) {
 	cudaMalloc(&(d_p.in_neighbors), g.in_neighbors_offset[g.V] * sizeof(vertex));
 	cudaMemcpy(d_p.in_neighbors, g.in_neighbors, g.in_neighbors_offset[g.V] * sizeof(vertex), cudaMemcpyHostToDevice);
 	cudaMalloc(&(d_p.out_neighbors), g.out_neighbors_offset[g.V] * sizeof(vertex));
@@ -145,59 +169,95 @@ void dcore(Graph &g) {
 	cudaMemcpy(d_p.in_degrees, g.in_degrees, g.V * sizeof(offset), cudaMemcpyHostToDevice);
 	cudaMalloc(&(d_p.out_degrees), (g.V) * sizeof(degree));
 	cudaMemcpy(d_p.out_degrees, g.out_degrees, g.V * sizeof(offset), cudaMemcpyHostToDevice);
-	cout << "Moved to device..." << endl;
+}
 
-	unsigned level = 0;
-	unsigned count = 0;
-	unsigned* global_count;
-	unsigned* inBuffers = nullptr;
-	unsigned* inBufferTails = nullptr;
-	unsigned* outBuffers = nullptr;
-	unsigned* outBufferTails = nullptr;
+degree* getResultFromGPU(device_pointers& d_p, unsigned size) {
+	auto res = new degree[size];
+	cudaMemcpy(res, d_p.out_degrees, size * sizeof(degree), cudaMemcpyDeviceToHost);
 
-	cudaMalloc(&inBuffers, BUFFER_SIZE * BLOCK_NUMS * sizeof(unsigned));
-	cudaMalloc(&inBufferTails, BLOCK_NUMS * sizeof(unsigned));
-	cudaMalloc(&outBuffers, BUFFER_SIZE * BLOCK_NUMS * sizeof(unsigned));
-	cudaMalloc(&outBufferTails, BLOCK_NUMS * sizeof(unsigned));
-	cudaMalloc(&global_count, sizeof(unsigned));
-	cudaMemset(global_count, 0, sizeof(unsigned));
+	return res;
+}
 
-	cout << "D-core Computation Started" << endl;
-
-	auto start = chrono::steady_clock::now();
-
-	while (count < g.V) {
-		cudaMemset(inBufferTails, 0, BLOCK_NUMS * sizeof(unsigned));
-		cudaMemset(outBufferTails, 0, BLOCK_NUMS * sizeof(unsigned));
-
-		scan<<<BLOCK_NUMS, BLOCK_DIM>>>(d_p, 3, level, g.V, inBuffers, inBufferTails, outBuffers, outBufferTails);
-		process<<<BLOCK_NUMS, BLOCK_DIM>>>(d_p, level, g.V, inBuffers, inBufferTails, outBuffers, outBufferTails, global_count);
-
-		cudaMemcpy(&count, global_count, sizeof(unsigned), cudaMemcpyDeviceToHost);
-		cout << "*********Completed level: " << level << ", global_count: " << count << " *********" << endl;
-		level++;
-	}
-	cout << "k-max " << level-1 << endl;
-
-	auto end = chrono::steady_clock::now();
-	cout << "D-core done, it took " << chrono::duration_cast<chrono::milliseconds>(end - start).count() << "ms" << endl;
-
-	cudaMemcpy(g.out_degrees, d_p.out_degrees, (g.V) * sizeof(degree), cudaMemcpyDeviceToHost);
-
+void dcore(Graph &g) {
+	unsigned kmax = 15;
 	vector<degree*> res;
-	res.push_back(g.out_degrees);
+
+	bool debug = false;
+
+	auto startDecomp = chrono::steady_clock::now();
+
+	for (unsigned k = 0; k <= kmax; ++k) {
+		// moving to GPU
+		device_pointers d_p;
+		moveGraphToGPU(g, d_p);
+		if (debug) cout << "Moved to device..." << endl;
+
+		unsigned level = 0;
+		unsigned count = 0;
+		unsigned* global_count;
+		unsigned* buffers = nullptr;
+		unsigned* bufferTails = nullptr;
+		bool* visited = nullptr;
+
+		cudaMalloc(&buffers, BUFFER_SIZE * BLOCK_NUMS * sizeof(unsigned));
+		cudaMalloc(&bufferTails, BLOCK_NUMS * sizeof(unsigned));
+		cudaMalloc(&global_count, sizeof(unsigned));
+		cudaMemset(global_count, 0, sizeof(unsigned));
+		cudaMalloc(&visited, g.V * sizeof(bool));
+		cudaMemset(visited, 0, g.V * sizeof(bool));
+
+		if (debug) cout << "D-core Computation Started for k=" << k << endl;
+
+		auto start = chrono::steady_clock::now();
+
+		while (count < g.V) {
+			cudaMemset(bufferTails, 0, BLOCK_NUMS * sizeof(unsigned));
+
+			scan<<<BLOCK_NUMS, BLOCK_DIM>>>(d_p, k, level, g.V, buffers, bufferTails, visited);
+			process<<<BLOCK_NUMS, BLOCK_DIM>>>(d_p, k, level, g.V, buffers, bufferTails, visited, global_count);
+
+			cudaMemcpy(&count, global_count, sizeof(unsigned), cudaMemcpyDeviceToHost);
+			// cout << "*********Completed level: " << level << ", global_count: " << count << " *********" << endl;
+			level++;
+		}
+		if (debug) cout << "k-max " << level-1 << endl;
+
+		auto end = chrono::steady_clock::now();
+		if (debug) cout << "D-core done, it took " << chrono::duration_cast<chrono::milliseconds>(end - start).count() << "ms" << endl;
+
+		auto r = getResultFromGPU(d_p, g.V);
+
+		res.push_back(r);
+	}
+
+	auto endDecomp = chrono::steady_clock::now();
+	cout << "D-core decomp done, it took " << chrono::duration_cast<chrono::milliseconds>(endDecomp - startDecomp).count() << "ms" << endl;
+
+	// unsigned errors = 0;
+	// for(int j = 0; j < g.V; j++){
+	// 	unsigned degree = res[0][j];
+	// 	for (int i = 0; i < res.size(); i++) {
+	// 		if (degree != res[i][j])
+	// 			errors++;
+	// 	}
+	// }
+	// cout << "errors: " << errors << endl;
 
 	ofstream outfile ("./cudares.txt",ios::in|ios::out|ios::binary|ios::trunc);
 	for (int i = 0; i < res.size(); i++) {
 		for(int j = 0; j < g.V; j++){
-			outfile << res[i][j] << " ";
+			outfile << setw(3);
+			if (res[i][j] > 20) //this should be lmax?
+				outfile << -1 << " ";
+			else
+				outfile << res[i][j] << " ";
 		}
 		outfile << "\r\n";
 	}
 }
 
 int main(int argc, char *argv[]) {
-	const string filename = "../dataset/digraph.txt";
+	const string filename = "../dataset/congress.txt";
 
     cout << "Graph loading started... " << endl;
     Graph g(filename);

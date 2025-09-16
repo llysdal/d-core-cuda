@@ -3,6 +3,7 @@
 #include <cassert>
 #include <fstream>
 #include <chrono>
+#include <iomanip>
 
 // export OMP_WAIT_POLICY=passive
 
@@ -628,11 +629,21 @@ void Graph_v2_test::PDC(){
 
     //write results: 1 row
     std::ofstream outfile ("./res.txt",ios::in|ios::out|ios::binary|ios::trunc);
-	for(int i = 0; i < Fres.size(); i++) {
+	// for(int i = 0; i < Fres.size(); i++) {
+	// 	for(int j = 0; j < Fres[i].size(); j++){
+	// 		outfile << Fres[i][j] << " ";
+ //            if(Fres[i][j]==1)
+ //                count4++;
+	// 	}
+	// 	outfile << "\r\n";
+	// }
+	for (int i = 0; i < Fres.size(); i++) {
 		for(int j = 0; j < Fres[i].size(); j++){
-			outfile << Fres[i][j] << " ";
-            if(Fres[i][j]==1)
-                count4++;
+			outfile << setw(3);
+			if (Fres[i][j] > 20) //this should be lmax?
+				outfile << -1 << " ";
+			else
+				outfile << Fres[i][j] << " ";
 		}
 		outfile << "\r\n";
 	}
