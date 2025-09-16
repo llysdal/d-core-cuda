@@ -12,23 +12,27 @@
 
 using namespace std;
 
-__device__ inline unsigned readFromBuffer(unsigned* glBuffer, unsigned loc) {
-	assert(loc < GLBUFFER_SIZE);
-	return glBuffer[loc];
+__device__ inline unsigned readFromBuffer(unsigned* buffer, unsigned loc) {
+	assert(loc < BUFFER_SIZE);
+	return buffer[loc];
 }
 
-__device__ inline void writeToBuffer(unsigned* glBuffer, unsigned loc, unsigned val) {
-	assert(loc < GLBUFFER_SIZE);
-	glBuffer[loc] = val;
+__device__ inline void writeToBuffer(unsigned* buffer, unsigned loc, unsigned val) {
+	assert(loc < BUFFER_SIZE);
+	buffer[loc] = val;
 }
 
-__global__ void scan(device_pointers d_p, unsigned k, unsigned level, unsigned V, unsigned int* bufTails, unsigned int* glBuffers) {
-	__shared__ unsigned* glBuffer;
-	__shared__ unsigned bufTail;
+__global__ void scan(device_pointers d_p, unsigned k, unsigned level, unsigned V, unsigned* inBuffers, unsigned* inBufferTails, unsigned* outBuffers, unsigned* outBufferTails) {
+	__shared__ unsigned* outBuffer;
+	__shared__ unsigned outBufferTail;
+	__shared__ unsigned* inBuffer;
+	__shared__ unsigned inBufferTail;
 
 	if (IS_MAIN_THREAD) {
-		bufTail = 0;
-		glBuffer = glBuffers + blockIdx.x * GLBUFFER_SIZE;
+		outBufferTail = 0;
+		outBuffer = outBuffers + blockIdx.x * BUFFER_SIZE;
+		inBufferTail = 0;
+		inBuffer = inBuffers + blockIdx.x * BUFFER_SIZE;
 	}
 	__syncthreads();
 
@@ -39,41 +43,48 @@ __global__ void scan(device_pointers d_p, unsigned k, unsigned level, unsigned V
 		if (v >= V) continue;
 
 		if (d_p.out_degrees[v] == level) {
-			unsigned loc = atomicAdd(&bufTail, 1);
-			writeToBuffer(glBuffer, loc, v);
+			unsigned loc = atomicAdd(&outBufferTail, 1);
+			writeToBuffer(outBuffer, loc, v);
 		}
-		// else if (in_degrees[v] < k) {
-		// 	unsigned loc = atomicAdd(&bufTail, 1);
-		// 	glBuffer[loc] = v;
-		// 	out_degrees[v] = level;
-		// }
+		else if (d_p.in_degrees[v] < k) {
+			unsigned loc = atomicAdd(&inBufferTail, 1);
+			writeToBuffer(inBuffer, loc, v);
+			d_p.out_degrees[v] = level;
+		}
 	}
 	__syncthreads();
 
 	if (IS_MAIN_THREAD) {
-		bufTails[blockIdx.x] = bufTail;
+		outBufferTails[blockIdx.x] = outBufferTail;
 	}
 }
 
-__global__ void process(device_pointers d_p, unsigned level, unsigned V, unsigned int* bufTails, unsigned int* glBuffers, unsigned int* global_count) {
-	__shared__ unsigned bufTail;
-	__shared__ unsigned* glBuffer;
+__global__ void process(device_pointers d_p, unsigned level, unsigned V, unsigned* inBuffers, unsigned* inBufferTails, unsigned* outBuffers, unsigned* outBufferTails, unsigned int* global_count) {
+	__shared__ unsigned outBufferTail;
+	__shared__ unsigned* outBuffer;
+	__shared__ unsigned* inBuffer;
+	__shared__ unsigned inBufferTail;
 	__shared__ unsigned base;
 	unsigned regTail;
 	unsigned i;
 
 	if (IS_MAIN_THREAD) {
-		bufTail = bufTails[blockIdx.x];
 		base = 0;
-		glBuffer = glBuffers + blockIdx.x * GLBUFFER_SIZE;
-		assert(glBuffer != nullptr);
+
+		outBufferTail = outBufferTails[blockIdx.x];
+		outBuffer = outBuffers + blockIdx.x * BUFFER_SIZE;
+		assert(outBuffer != nullptr);
+
+		inBufferTail = inBufferTails[blockIdx.x];
+		inBuffer = inBuffers + blockIdx.x * BUFFER_SIZE;
+		assert(inBuffer != nullptr);
 	}
 
 	while (true) {
 		__syncthreads();
-		if (base == bufTail) break;	// every thread exit at the same iteration
+		if (base == outBufferTail) break;	// every thread exit at the same iteration
 		i = base + WARP_ID;
-		regTail = bufTail;
+		regTail = outBufferTail;
 		__syncthreads();
 
 		if (i >= regTail) continue; // this warp won't have to do anything
@@ -84,7 +95,7 @@ __global__ void process(device_pointers d_p, unsigned level, unsigned V, unsigne
 				base = regTail;
 		}
 
-		unsigned v = readFromBuffer(glBuffer, i);
+		unsigned v = readFromBuffer(outBuffer, i);
 		unsigned start = d_p.out_neighbors_offset[v];
 		unsigned end   = d_p.out_neighbors_offset[v + 1];
 
@@ -103,8 +114,8 @@ __global__ void process(device_pointers d_p, unsigned level, unsigned V, unsigne
 				unsigned a = atomicSub(d_p.out_degrees + u, 1);
 
 				if (a == level + 1) {
-					unsigned loc = atomicAdd(&bufTail, 1);
-					writeToBuffer(glBuffer, loc, u);
+					unsigned loc = atomicAdd(&outBufferTail, 1);
+					writeToBuffer(outBuffer, loc, u);
 				}
 				else if (a <= level) {
 					// oops we decremented too much
@@ -114,8 +125,8 @@ __global__ void process(device_pointers d_p, unsigned level, unsigned V, unsigne
 		}
 	}
 
-	if (IS_MAIN_THREAD && bufTail > 0) {
-		atomicAdd(global_count, bufTail);
+	if (IS_MAIN_THREAD && outBufferTail > 0) {
+		atomicAdd(global_count, outBufferTail);
 	}
 }
 
@@ -139,11 +150,15 @@ void dcore(Graph &g) {
 	unsigned level = 0;
 	unsigned count = 0;
 	unsigned* global_count;
-	unsigned* bufTails = nullptr;
-	unsigned* glBuffers = nullptr;
+	unsigned* inBuffers = nullptr;
+	unsigned* inBufferTails = nullptr;
+	unsigned* outBuffers = nullptr;
+	unsigned* outBufferTails = nullptr;
 
-	cudaMalloc(&bufTails, BLOCK_NUMS * sizeof(unsigned));
-	cudaMalloc(&glBuffers, GLBUFFER_SIZE * BLOCK_NUMS * sizeof(unsigned));
+	cudaMalloc(&inBuffers, BUFFER_SIZE * BLOCK_NUMS * sizeof(unsigned));
+	cudaMalloc(&inBufferTails, BLOCK_NUMS * sizeof(unsigned));
+	cudaMalloc(&outBuffers, BUFFER_SIZE * BLOCK_NUMS * sizeof(unsigned));
+	cudaMalloc(&outBufferTails, BLOCK_NUMS * sizeof(unsigned));
 	cudaMalloc(&global_count, sizeof(unsigned));
 	cudaMemset(global_count, 0, sizeof(unsigned));
 
@@ -152,10 +167,11 @@ void dcore(Graph &g) {
 	auto start = chrono::steady_clock::now();
 
 	while (count < g.V) {
-		cudaMemset(bufTails, 0, BLOCK_NUMS * sizeof(unsigned));
+		cudaMemset(inBufferTails, 0, BLOCK_NUMS * sizeof(unsigned));
+		cudaMemset(outBufferTails, 0, BLOCK_NUMS * sizeof(unsigned));
 
-		scan<<<BLOCK_NUMS, BLOCK_DIM>>>(d_p, 3, level, g.V, bufTails, glBuffers);
-		process<<<BLOCK_NUMS, BLOCK_DIM>>>(d_p, level, g.V, bufTails, glBuffers, global_count);
+		scan<<<BLOCK_NUMS, BLOCK_DIM>>>(d_p, 3, level, g.V, inBuffers, inBufferTails, outBuffers, outBufferTails);
+		process<<<BLOCK_NUMS, BLOCK_DIM>>>(d_p, level, g.V, inBuffers, inBufferTails, outBuffers, outBufferTails, global_count);
 
 		cudaMemcpy(&count, global_count, sizeof(unsigned), cudaMemcpyDeviceToHost);
 		cout << "*********Completed level: " << level << ", global_count: " << count << " *********" << endl;

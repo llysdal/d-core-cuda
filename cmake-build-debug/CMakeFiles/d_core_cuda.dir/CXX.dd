@@ -1,0 +1,5 @@
+ninja_dyndep_version = 1.0
+build CMakeFiles\d_core_cuda.dir\src\graph.cpp.obj: dyndep
+
+build CMakeFiles\d_core_cuda.dir\src\graph_cpu.cpp.obj: dyndep
+

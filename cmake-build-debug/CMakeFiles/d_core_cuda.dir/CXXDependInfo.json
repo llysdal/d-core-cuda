@@ -1,0 +1,36 @@
+{
+	"bmi-installation" : null,
+	"compiler-frontend-variant" : "MSVC",
+	"compiler-id" : "MSVC",
+	"compiler-simulate-id" : "",
+	"config" : "Debug",
+	"cxx-modules" : {},
+	"database-info" : null,
+	"dir-cur-bld" : "C:/projects/d-core-cuda/cmake-build-debug",
+	"dir-cur-src" : "C:/projects/d-core-cuda",
+	"dir-top-bld" : "C:/projects/d-core-cuda/cmake-build-debug",
+	"dir-top-src" : "C:/projects/d-core-cuda",
+	"exports" : [],
+	"forward-modules-from-target-dirs" : [],
+	"include-dirs" : 
+	[
+		"C:\\projects\\d-core-cuda\\src",
+		"C:\\projects\\d-core-cuda\\dataset"
+	],
+	"language" : "CXX",
+	"linked-target-dirs" : [],
+	"module-dir" : "C:/projects/d-core-cuda/cmake-build-debug/CMakeFiles/d_core_cuda.dir",
+	"sources" : 
+	{
+		"CMakeFiles/d_core_cuda.dir/src/graph.cpp.obj" : 
+		{
+			"language" : "CXX",
+			"source" : "C:/projects/d-core-cuda/src/graph.cpp"
+		},
+		"CMakeFiles/d_core_cuda.dir/src/graph_cpu.cpp.obj" : 
+		{
+			"language" : "CXX",
+			"source" : "C:/projects/d-core-cuda/src/graph_cpu.cpp"
+		}
+	}
+}

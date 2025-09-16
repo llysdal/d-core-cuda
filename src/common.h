@@ -15,7 +15,7 @@
 #define WARP_ID			(THREAD_ID >> 5)
 #define LANE_ID			(THREAD_ID & 31)
 
-#define GLBUFFER_SIZE	1'000'000
+#define BUFFER_SIZE		1'000'000
 
 typedef struct device_pointers {
 	unsigned* in_neighbors;
