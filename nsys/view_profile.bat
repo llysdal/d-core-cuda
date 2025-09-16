@@ -1,0 +1,1 @@
+nsys stats --force-export=true -r cuda_gpu_sum nsys_temp.nsys-rep
