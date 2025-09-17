@@ -7,20 +7,12 @@
 #include <ostream>
 #include <ranges>
 #include <vector>
-
+#include "common.h"
+#include "common.cuh"
 #include "graph.h"
 
 using namespace std;
 
-__device__ inline unsigned readFromBuffer(unsigned* buffer, unsigned loc) {
-	assert(loc < BUFFER_SIZE);
-	return buffer[loc];
-}
-
-__device__ inline void writeToBuffer(unsigned* buffer, unsigned loc, unsigned val) {
-	assert(loc < BUFFER_SIZE);
-	buffer[loc] = val;
-}
 
 __global__ void scan(device_pointers d_p, unsigned k, unsigned level, unsigned V, unsigned* buffers, unsigned* bufferTails, bool* visited) {
 	__shared__ unsigned* buffer;
@@ -106,22 +98,22 @@ __global__ void process(device_pointers d_p, unsigned k, unsigned level, unsigne
 				unsigned j = outStart + LANE_ID;
 				outStart += WARP_SIZE;
 
-				if (j < outEnd) {
-					unsigned u = d_p.out_neighbors[j];
-
-					if (!visited[u]) {
-						unsigned a = atomicSub(d_p.in_degrees + u, 1);
-
-						if (a <= k) {
-							unsigned loc = atomicAdd(&bufferTail, 1);
-							writeToBuffer(buffer, loc, u);
-
-							*(d_p.out_degrees + u) = level;
-
-							visited[u] = true;
-						}
-					}
-				}
+				// if (j < outEnd) {
+				// 	unsigned u = d_p.out_neighbors[j];
+				//
+				// 	if (!visited[u]) {
+				// 		unsigned a = atomicSub(d_p.in_degrees + u, 1);
+				//
+				// 		if (a <= k) {
+				// 			unsigned loc = atomicAdd(&bufferTail, 1);
+				// 			writeToBuffer(buffer, loc, u);
+				//
+				// 			*(d_p.out_degrees + u) = level;
+				//
+				// 			visited[u] = true;
+				// 		}
+				// 	}
+				// }
 			}
 			if (doIn) {
 				unsigned j = inStart + LANE_ID;
@@ -132,6 +124,7 @@ __global__ void process(device_pointers d_p, unsigned k, unsigned level, unsigne
 
 					if (!visited[w]) {
 						if (*(d_p.out_degrees + w) > level) {
+							// an issue could be several threads accessing the same neighbor and decrementing too much?
 							unsigned a = atomicSub(d_p.out_degrees + w, 1);
 
 							if (a == level + 1) {
@@ -247,9 +240,9 @@ void dcore(Graph &g) {
 	for (int i = 0; i < res.size(); i++) {
 		for(int j = 0; j < g.V; j++){
 			outfile << setw(3);
-			if (res[i][j] > 20) //this should be lmax?
-				outfile << -1 << " ";
-			else
+			// if (res[i][j] > 20) //this should be lmax?
+			// 	outfile << -1 << " ";
+			// else
 				outfile << res[i][j] << " ";
 		}
 		outfile << "\r\n";
