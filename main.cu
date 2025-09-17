@@ -88,55 +88,53 @@ __global__ void process(device_pointers d_p, unsigned k, unsigned level, unsigne
 
 		while (true) {
 			__syncwarp();
+			if (outStart >= outEnd) break;
 
-			bool doIn	= inStart < inEnd;
-			bool doOut	= outStart < outEnd;
+			unsigned j = outStart + LANE_ID;
+			outStart += WARP_SIZE;
 
-			if (!doIn && !doOut) break;
+			if (j < outEnd) {
+				unsigned u = d_p.out_neighbors[j];
 
-			if (doOut) {
-				unsigned j = outStart + LANE_ID;
-				outStart += WARP_SIZE;
+				if (!visited[u]) {
+					unsigned a = atomicSub(d_p.in_degrees + u, 1);
 
-				// if (j < outEnd) {
-				// 	unsigned u = d_p.out_neighbors[j];
-				//
-				// 	if (!visited[u]) {
-				// 		unsigned a = atomicSub(d_p.in_degrees + u, 1);
-				//
-				// 		if (a <= k) {
-				// 			unsigned loc = atomicAdd(&bufferTail, 1);
-				// 			writeToBuffer(buffer, loc, u);
-				//
-				// 			*(d_p.out_degrees + u) = level;
-				//
-				// 			visited[u] = true;
-				// 		}
-				// 	}
-				// }
+					if (a <= k) {
+						unsigned loc = atomicAdd(&bufferTail, 1);
+						writeToBuffer(buffer, loc, u);
+
+						*(d_p.out_degrees + u) = level;
+
+						visited[u] = true;
+					}
+				}
 			}
-			if (doIn) {
-				unsigned j = inStart + LANE_ID;
-				inStart += WARP_SIZE;
+		}
 
-				if (j < inEnd) {
-					unsigned w = d_p.in_neighbors[j];
+		while (true) {
+			__syncwarp();
+			if (inStart >= inEnd) break;
 
-					if (!visited[w]) {
-						if (*(d_p.out_degrees + w) > level) {
-							// an issue could be several threads accessing the same neighbor and decrementing too much?
-							unsigned a = atomicSub(d_p.out_degrees + w, 1);
+			unsigned j = inStart + LANE_ID;
+			inStart += WARP_SIZE;
 
-							if (a == level + 1) {
-								unsigned loc = atomicAdd(&bufferTail, 1);
-								writeToBuffer(buffer, loc, w);
-								visited[w] = true;
-							}
-							else if (a <= level) {
-								// oops we decremented too much
-								atomicAdd(d_p.out_degrees + w, 1);
-								visited[w] = true;
-							}
+			if (j < inEnd) {
+				unsigned w = d_p.in_neighbors[j];
+
+				if (!visited[w]) {
+					if (*(d_p.out_degrees + w) > level) {
+						// an issue could be several threads accessing the same neighbor and decrementing too much?
+						unsigned a = atomicSub(d_p.out_degrees + w, 1);
+
+						if (a == level + 1) {
+							unsigned loc = atomicAdd(&bufferTail, 1);
+							writeToBuffer(buffer, loc, w);
+							visited[w] = true;
+						}
+						else if (a <= level) {
+							// oops we decremented too much
+							atomicAdd(d_p.out_degrees + w, 1);
+							visited[w] = true;
 						}
 					}
 				}
@@ -172,7 +170,7 @@ degree* getResultFromGPU(device_pointers& d_p, unsigned size) {
 }
 
 void dcore(Graph &g) {
-	unsigned kmax = 15;
+	unsigned kmax = 16;
 	vector<degree*> res;
 
 	bool debug = false;

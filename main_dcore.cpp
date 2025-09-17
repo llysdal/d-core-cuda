@@ -90,7 +90,7 @@ int main(int argc, char *argv[]) {
     //clock_t begin = clock();
 
 	cout << "running algo" << endl;
-    g.PDC();
+    g.PDC_org();
 	cout << "done" << endl;
 
     //clock_t end = clock();

@@ -29,6 +29,7 @@ public:
     ~Graph_v2_test();
 
 	void PDC();
+	void PDC_org();
 
     string ds;
 private:
@@ -125,4 +126,6 @@ private:
 	std::vector<int> Parpeel(int k);
 	std::vector<int> Parpeel(int k, std::vector<int> upper);
 	std::vector<int> kshell(std::vector<int> iH);
+
+	std::vector<int> Parpeel_org(int k);
 };

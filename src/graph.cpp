@@ -3,6 +3,7 @@
 #include <chrono>
 #include <sstream>
 #include <numeric>
+#include <vector>
 
 #include "./graph.h"
 

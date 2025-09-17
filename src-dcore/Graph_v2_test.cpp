@@ -669,3 +669,219 @@ void Graph_v2_test::PDC(){
     free(vert);
 
 }
+
+
+std::vector<int> Graph_v2_test::Parpeel_org(int k){
+    int NUM_THREADS = omp_get_max_threads();
+
+    int visited = 0;
+
+
+    std::vector<int> Din, Dout, flag;
+    Din.resize(n);
+    Dout.resize(n);
+    flag.resize(n);
+    for (int i = 0; i < n; i++) {
+        Dout[i] = deg[0][i];
+        Din[i] = deg[1][i];
+        flag[i] = 0;
+    }
+
+#pragma omp parallel
+{
+    int level = 0;
+
+    long buff_size = n;
+
+    int *buff = (int *)malloc(buff_size*sizeof(int));
+    assert(buff != NULL);
+
+    int start = 0, end = 0;
+
+    while(visited < n){
+        #pragma omp for schedule(static)
+        for(int i = 0; i < n; i++){
+            if(flag[i] < 1){
+                if(Dout[i] == level){
+                    buff[end] = i;
+                    end++;
+                    flag[i]++;
+                }
+                else if (Din[i] < k){
+                    Dout[i] = level;
+                    buff[end] = i;
+                    end++;
+                    flag[i]++;
+                }
+            }
+        }
+
+
+        while(start < end){
+            int v = buff[start];
+            start++;
+            flag[v]++;
+
+            for(int j = 0; j < adj[0][v].size(); j++){
+                int u = adj[0][v][j];
+
+                if(flag[u]) continue;
+
+                int din_u = __sync_fetch_and_sub(&Din[u], 1);
+
+                if(din_u <= k){
+                    if(flag[u] == 0){
+                        buff[end] = u;
+                        end++;
+
+                        Dout[u] = level;
+                        flag[u]++;
+                    }
+                }
+
+            }
+
+            for(int j = 0; j < adj[1][v].size(); j++){
+                int u = adj[1][v][j];
+
+                if(flag[u]) continue;
+
+                int dout_u = Dout[u];
+
+                if(dout_u > level){
+                    int du = __sync_fetch_and_sub(&Dout[u], 1);
+                    if(du==(level+1)){
+                        buff[end] = u;
+                        end++;
+                        flag[u]++;
+                    }
+
+                    if(du <= level){
+                        __sync_fetch_and_add(&Dout[u], 1);
+                        flag[u]++;
+                    }
+                }
+
+            }
+        }
+
+        __sync_fetch_and_add(&visited, end);
+
+        #pragma omp barrier
+        start = 0;
+        end = 0;
+        level = level+1;
+    }
+
+    free( buff );
+}
+
+    return Dout;
+}
+
+void Graph_v2_test::PDC_org(){
+    omp_set_num_threads(num_of_thread);
+    int NUM_THREADS = num_of_thread;
+
+
+    int vis_num = 0;
+
+    std::vector<int> Din, Dout;
+    Din.resize(n);
+    Dout.resize(n);
+    for (int i = 0; i < n; i++) {
+        Dout[i] = deg[0][i];
+        Din[i] = deg[1][i];
+    }
+
+    auto begin = std::chrono::steady_clock::now();
+
+
+
+
+#pragma omp parallel
+{
+    int level = 0;
+
+    long buff_size = n;
+
+
+    int *buff = (int *)malloc(buff_size*sizeof(int));
+    assert(buff != NULL);
+
+    int start = 0, end = 0;
+
+    while(vis_num < n){
+
+        #pragma omp for schedule(static)
+        for(int i = 0; i < n; i++){
+            if(Din[i] == level){
+                buff[end] = i;
+                end++;
+            }
+        }
+
+        while(start < end){
+            int v = buff[start];
+            start++;
+
+            for(int j = 0; j < adj[0][v].size(); j++){
+                int u = adj[0][v][j];
+                int din_u = Din[u];
+
+                if(din_u > level){
+                    int du = __sync_fetch_and_sub(&Din[u], 1);
+                    if(du==(level+1)){
+                        buff[end] = u;
+                        end++;
+                    }
+
+                    if(du <= level) __sync_fetch_and_add(&Din[u], 1);
+                }
+
+            }
+        }
+
+        __sync_fetch_and_add(&vis_num, end);
+
+        #pragma omp barrier
+        start = 0;
+        end = 0;
+        level = level+1;
+    }
+
+    free(buff);
+}
+
+    int level = *max_element(Din.begin(),Din.end());
+
+
+    std::vector<std::vector<int>> Fres;
+
+    Fres.push_back(Parpeel_org(0));
+
+    auto end1 = std::chrono::steady_clock::now();
+
+    for (int k=1; k<=level;k++) {
+        Fres.push_back(Parpeel_org(k));
+    }
+
+    auto end2 = std::chrono::steady_clock::now();
+
+	std::ofstream outfile ("./res_congress_org.txt",ios::in|ios::out|ios::binary|ios::trunc);
+	for (int i = 0; i < Fres.size(); i++) {
+		for(int j = 0; j < Fres[i].size(); j++){
+			outfile << setw(3);
+			if (Fres[i][j] > 20) //this should be lmax?
+				outfile << -1 << " ";
+			else
+				outfile << Fres[i][j] << " ";
+		}
+		outfile << "\r\n";
+	}
+
+    double runtime1 = std::chrono::duration<double>(end1 - begin).count();
+    double runtime2 = std::chrono::duration<double>(end2 - end1).count();
+    printf("stage 1 running time: %.4f sec, stage 2 running time: %.4lf sec.\n", runtime1, runtime2);
+
+}
