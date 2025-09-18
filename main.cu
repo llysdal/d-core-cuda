@@ -149,6 +149,7 @@ __global__ void process(device_pointers d_p, unsigned k, unsigned level, unsigne
 		atomicAdd(global_count, bufferTail);
 	}
 
+	// error correction?? because we might've incremented or decremented after setting something to level (we use core)
 	unsigned global_threadIdx = blockIdx.x * blockDim.x + threadIdx.x;
 	for (unsigned base = 0; base < V; base += THREAD_COUNT) {
 		vertex v = base + global_threadIdx;
@@ -175,6 +176,11 @@ void moveGraphToGPU(Graph& g, device_pointers& d_p) {
 	cudaMemcpy(d_p.out_degrees, g.out_degrees, g.V * sizeof(offset), cudaMemcpyHostToDevice);
 }
 
+void refreshGraphOnGPU(Graph& g, device_pointers& d_p) {
+	cudaMemcpy(d_p.in_degrees, g.in_degrees, g.V * sizeof(offset), cudaMemcpyHostToDevice);
+	cudaMemcpy(d_p.out_degrees, g.out_degrees, g.V * sizeof(offset), cudaMemcpyHostToDevice);
+}
+
 degree* getResultFromGPU(device_pointers& d_p, unsigned size) {
 	auto res = new degree[size];
 	cudaMemcpy(res, d_p.out_degrees, size * sizeof(degree), cudaMemcpyDeviceToHost);
@@ -182,37 +188,115 @@ degree* getResultFromGPU(device_pointers& d_p, unsigned size) {
 	return res;
 }
 
-void dcore(Graph &g) {
-	unsigned kmax = 15;
-	vector<degree*> res;
 
+unsigned calcKmax(Graph& g, device_pointers& d_p) {
+	unsigned level = 0;
+	unsigned count = 0;
+	unsigned* global_count;
+	unsigned* buffers = nullptr;
+	unsigned* bufferTails = nullptr;
+	unsigned* visited = nullptr;
+	int* core = nullptr;
+
+	cudaMalloc(&buffers, BUFFER_SIZE * BLOCK_NUMS * sizeof(unsigned));
+	cudaMalloc(&bufferTails, BLOCK_NUMS * sizeof(unsigned));
+	cudaMalloc(&global_count, sizeof(unsigned));
+	cudaMemset(global_count, 0, sizeof(unsigned));
+	cudaMalloc(&visited, g.V * sizeof(unsigned));
+	cudaMemset(visited, 0, g.V * sizeof(unsigned));
+	cudaMalloc(&core, g.V * sizeof(int));
+	cudaMemset(core, -1, g.V * sizeof(int));
+
+	moveGraphToGPU(g, d_p);
+	// do a flip!!
+	swap(d_p.in_degrees, d_p.out_degrees);
+	swap(d_p.in_neighbors, d_p.out_neighbors);
+	swap(d_p.in_neighbors_offset, d_p.out_neighbors_offset);
+
+	while (count < g.V) {
+		cudaMemset(bufferTails, 0, BLOCK_NUMS * sizeof(unsigned));
+
+		scan<<<BLOCK_NUMS, BLOCK_DIM>>>(d_p, 0, level, g.V, buffers, bufferTails, visited, core);
+		process<<<BLOCK_NUMS, BLOCK_DIM>>>(d_p, 0, level, g.V, buffers, bufferTails, visited, core, global_count);
+
+		cudaMemcpy(&count, global_count, sizeof(unsigned), cudaMemcpyDeviceToHost);
+		// cout << "*********Completed level: " << level << ", global_count: " << count << " *********" << endl;
+		level++;
+	}
+
+	return level - 1;
+}
+
+
+void dcore(Graph &g) {
 	bool debug = false;
 
+	vector<degree*> res;
+
+	// setting up GPU memory
+	auto startMemory = chrono::steady_clock::now();
+
+	unsigned* buffers = nullptr;
+	unsigned* bufferTails = nullptr;
+	unsigned* global_count;
+	unsigned* visited = nullptr;
+	int* core = nullptr;
+
+	cudaMalloc(&buffers, BUFFER_SIZE * BLOCK_NUMS * sizeof(unsigned));
+	cudaMalloc(&bufferTails, BLOCK_NUMS * sizeof(unsigned));
+	cudaMalloc(&global_count, sizeof(unsigned));
+	cudaMalloc(&visited, g.V * sizeof(unsigned));
+	cudaMalloc(&core, g.V * sizeof(int));
+
+	// moving to GPU
+	device_pointers d_p;
+	moveGraphToGPU(g, d_p);
+
+	auto endMemory = chrono::steady_clock::now();
+	cout << "D-core memory setup done\t" << chrono::duration_cast<chrono::milliseconds>(endMemory - startMemory).count() << "ms" << endl;
+
+	if (debug) cout << "Moved to device..." << endl;
+
+	//kmax!!
+	auto startKmax = chrono::steady_clock::now();
+	unsigned level = 0;
+	unsigned count = 0;
+	// do a flip!!
+	swap(d_p.in_degrees, d_p.out_degrees);
+	swap(d_p.in_neighbors, d_p.out_neighbors);
+	swap(d_p.in_neighbors_offset, d_p.out_neighbors_offset);
+
+	while (count < g.V) {
+		cudaMemset(bufferTails, 0, BLOCK_NUMS * sizeof(unsigned));
+
+		scan<<<BLOCK_NUMS, BLOCK_DIM>>>(d_p, 0, level, g.V, buffers, bufferTails, visited, core);
+		process<<<BLOCK_NUMS, BLOCK_DIM>>>(d_p, 0, level, g.V, buffers, bufferTails, visited, core, global_count);
+
+		cudaMemcpy(&count, global_count, sizeof(unsigned), cudaMemcpyDeviceToHost);
+		level++;
+	}
+	unsigned kmax = level - 1;
+	// lets fix the mess we made...
+	swap(d_p.in_degrees, d_p.out_degrees);
+	swap(d_p.in_neighbors, d_p.out_neighbors);
+	swap(d_p.in_neighbors_offset, d_p.out_neighbors_offset);
+	refreshGraphOnGPU(g, d_p);
+
+	auto endKmax = chrono::steady_clock::now();
+	cout << "D-core k-max (" << kmax << ") done\t\t" << chrono::duration_cast<chrono::milliseconds>(endKmax - startKmax).count() << "ms" << endl;
+
 	auto startDecomp = chrono::steady_clock::now();
-
-	// lets do k-shell here on the CPU to figure out what we need to calculate :)
-
+	vector<unsigned> lmaxes;
 	for (unsigned k = 0; k <= kmax; ++k) {
-		// moving to GPU
-		device_pointers d_p;
-		moveGraphToGPU(g, d_p);
-		if (debug) cout << "Moved to device..." << endl;
+
+		refreshGraphOnGPU(g, d_p);
+		if (debug) cout << "Refreshed graph on device..." << endl;
 
 		unsigned level = 0;
 		unsigned count = 0;
-		unsigned* global_count;
-		unsigned* buffers = nullptr;
-		unsigned* bufferTails = nullptr;
-		unsigned* visited = nullptr;
-		int* core = nullptr;
 
-		cudaMalloc(&buffers, BUFFER_SIZE * BLOCK_NUMS * sizeof(unsigned));
-		cudaMalloc(&bufferTails, BLOCK_NUMS * sizeof(unsigned));
-		cudaMalloc(&global_count, sizeof(unsigned));
 		cudaMemset(global_count, 0, sizeof(unsigned));
-		cudaMalloc(&visited, g.V * sizeof(unsigned));
 		cudaMemset(visited, 0, g.V * sizeof(unsigned));
-		cudaMalloc(&core, g.V * sizeof(int));
 		cudaMemset(core, -1, g.V * sizeof(int));
 
 		if (debug) cout << "D-core Computation Started for k=" << k << endl;
@@ -229,7 +313,8 @@ void dcore(Graph &g) {
 			// cout << "*********Completed level: " << level << ", global_count: " << count << " *********" << endl;
 			level++;
 		}
-		if (debug) cout << "k-max " << level-1 << endl;
+		lmaxes.push_back(level - 1);
+		if (debug) cout << "l-max " << level-1 << endl;
 
 		auto end = chrono::steady_clock::now();
 		if (debug) cout << "D-core done, it took " << chrono::duration_cast<chrono::milliseconds>(end - start).count() << "ms" << endl;
@@ -240,33 +325,24 @@ void dcore(Graph &g) {
 	}
 
 	auto endDecomp = chrono::steady_clock::now();
-	cout << "D-core decomp done, it took " << chrono::duration_cast<chrono::milliseconds>(endDecomp - startDecomp).count() << "ms" << endl;
+	cout << "D-core decomp done\t\t" << chrono::duration_cast<chrono::milliseconds>(endDecomp - startDecomp).count() << "ms" << endl;
 
-	// unsigned errors = 0;
-	// for(int j = 0; j < g.V; j++){
-	// 	unsigned degree = res[0][j];
-	// 	for (int i = 0; i < res.size(); i++) {
-	// 		if (degree != res[i][j])
-	// 			errors++;
-	// 	}
-	// }
-	// cout << "errors: " << errors << endl;
+	auto lmax_max = *max_element(lmaxes.begin(), lmaxes.end());
+	cout << "max lmax: " << lmax_max << endl;
 
+	long long width = to_string(lmax_max).length();
 	ofstream outfile ("./cudares.txt",ios::in|ios::out|ios::binary|ios::trunc);
 	for (int i = 0; i < res.size(); i++) {
 		for(int j = 0; j < g.V; j++){
-			outfile << setw(3);
-			// if (res[i][j] > 20) //this should be lmax?
-			// 	outfile << -1 << " ";
-			// else
-				outfile << res[i][j] << " ";
+			outfile << setw(width);
+			outfile << res[i][j] << " ";
 		}
 		outfile << "\r\n";
 	}
 }
 
 int main(int argc, char *argv[]) {
-	const string filename = "../dataset/congress.txt";
+	const string filename = "../dataset/wiki-vote.txt";
 
     cout << "Graph loading started... " << endl;
     Graph g(filename);

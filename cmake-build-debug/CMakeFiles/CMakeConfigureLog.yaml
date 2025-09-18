@@ -63,8 +63,8 @@ events:
     checks:
       - "Detecting CXX compiler ABI info"
     directories:
-      source: "C:/projects/d-core-cuda/cmake-build-debug/CMakeFiles/CMakeScratch/TryCompile-h7g4yg"
-      binary: "C:/projects/d-core-cuda/cmake-build-debug/CMakeFiles/CMakeScratch/TryCompile-h7g4yg"
+      source: "C:/projects/d-core-cuda/cmake-build-debug/CMakeFiles/CMakeScratch/TryCompile-7wb4yo"
+      binary: "C:/projects/d-core-cuda/cmake-build-debug/CMakeFiles/CMakeScratch/TryCompile-7wb4yo"
     cmakeVariables:
       CMAKE_CXX_FLAGS: "/DWIN32 /D_WINDOWS /EHsc"
       CMAKE_CXX_FLAGS_DEBUG: "/Ob0 /Od"
@@ -74,11 +74,11 @@ events:
       variable: "CMAKE_CXX_ABI_COMPILED"
       cached: true
       stdout: |
-        Change Dir: 'C:/projects/d-core-cuda/cmake-build-debug/CMakeFiles/CMakeScratch/TryCompile-h7g4yg'
+        Change Dir: 'C:/projects/d-core-cuda/cmake-build-debug/CMakeFiles/CMakeScratch/TryCompile-7wb4yo'
         
-        Run Build Command(s): "C:/Program Files/JetBrains/CLion 2025.1.4/bin/ninja/win/x64/ninja.exe" -v cmTC_a37bf
-        [1/2] C:\\PROGRA~1\\MIB055~1\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo /TP   /DWIN32 /D_WINDOWS /EHsc  /Ob0 /Od -std:c++20 -MDd -RTC1 -Zi /showIncludes /FoCMakeFiles\\cmTC_a37bf.dir\\CMakeCXXCompilerABI.cpp.obj /FdCMakeFiles\\cmTC_a37bf.dir\\ /FS -c "C:\\Program Files\\JetBrains\\CLion 2025.1.4\\bin\\cmake\\win\\x64\\share\\cmake-4.0\\Modules\\CMakeCXXCompilerABI.cpp"
-        [2/2] C:\\WINDOWS\\system32\\cmd.exe /C "cd . && "C:\\Program Files\\JetBrains\\CLion 2025.1.4\\bin\\cmake\\win\\x64\\bin\\cmake.exe" -E vs_link_exe --msvc-ver=1944 --intdir=CMakeFiles\\cmTC_a37bf.dir --rc=C:\\PROGRA~2\\WI3CF2~1\\10\\bin\\100190~1.0\\x64\\rc.exe --mt=C:\\PROGRA~2\\WI3CF2~1\\10\\bin\\100190~1.0\\x64\\mt.exe --manifests  -- C:\\PROGRA~1\\MIB055~1\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\link.exe /nologo CMakeFiles\\cmTC_a37bf.dir\\CMakeCXXCompilerABI.cpp.obj  /out:cmTC_a37bf.exe /implib:cmTC_a37bf.lib /pdb:cmTC_a37bf.pdb /version:0.0 /machine:x64 /debug /INCREMENTAL /subsystem:console  kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib && cd ."
+        Run Build Command(s): "C:/Program Files/JetBrains/CLion 2025.1.4/bin/ninja/win/x64/ninja.exe" -v cmTC_971d2
+        [1/2] C:\\PROGRA~1\\MIB055~1\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\cl.exe  /nologo /TP   /DWIN32 /D_WINDOWS /EHsc  /Ob0 /Od -std:c++20 -MDd -RTC1 -Zi /showIncludes /FoCMakeFiles\\cmTC_971d2.dir\\CMakeCXXCompilerABI.cpp.obj /FdCMakeFiles\\cmTC_971d2.dir\\ /FS -c "C:\\Program Files\\JetBrains\\CLion 2025.1.4\\bin\\cmake\\win\\x64\\share\\cmake-4.0\\Modules\\CMakeCXXCompilerABI.cpp"
+        [2/2] C:\\WINDOWS\\system32\\cmd.exe /C "cd . && "C:\\Program Files\\JetBrains\\CLion 2025.1.4\\bin\\cmake\\win\\x64\\bin\\cmake.exe" -E vs_link_exe --msvc-ver=1944 --intdir=CMakeFiles\\cmTC_971d2.dir --rc=C:\\PROGRA~2\\WI3CF2~1\\10\\bin\\100190~1.0\\x64\\rc.exe --mt=C:\\PROGRA~2\\WI3CF2~1\\10\\bin\\100190~1.0\\x64\\mt.exe --manifests  -- C:\\PROGRA~1\\MIB055~1\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\link.exe /nologo CMakeFiles\\cmTC_971d2.dir\\CMakeCXXCompilerABI.cpp.obj  /out:cmTC_971d2.exe /implib:cmTC_971d2.lib /pdb:cmTC_971d2.pdb /version:0.0 /machine:x64 /debug /INCREMENTAL /subsystem:console  kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib && cd ."
         
       exitCode: 0
   -
@@ -344,8 +344,8 @@ events:
     checks:
       - "Detecting CUDA compiler ABI info"
     directories:
-      source: "C:/projects/d-core-cuda/cmake-build-debug/CMakeFiles/CMakeScratch/TryCompile-lnxdkg"
-      binary: "C:/projects/d-core-cuda/cmake-build-debug/CMakeFiles/CMakeScratch/TryCompile-lnxdkg"
+      source: "C:/projects/d-core-cuda/cmake-build-debug/CMakeFiles/CMakeScratch/TryCompile-68ivcj"
+      binary: "C:/projects/d-core-cuda/cmake-build-debug/CMakeFiles/CMakeScratch/TryCompile-68ivcj"
     cmakeVariables:
       CMAKE_CUDA_ARCHITECTURES: "75"
       CMAKE_CUDA_FLAGS: "-D_WINDOWS -Xcompiler=\" /EHsc\""
@@ -356,19 +356,19 @@ events:
       variable: "CMAKE_CUDA_ABI_COMPILED"
       cached: true
       stdout: |
-        Change Dir: 'C:/projects/d-core-cuda/cmake-build-debug/CMakeFiles/CMakeScratch/TryCompile-lnxdkg'
+        Change Dir: 'C:/projects/d-core-cuda/cmake-build-debug/CMakeFiles/CMakeScratch/TryCompile-68ivcj'
         
-        Run Build Command(s): C:/PROGRA~1/JETBRA~1/CLION2~1.4/bin/ninja/win/x64/ninja.exe -v cmTC_5672b
-        [1/2] C:\\PROGRA~1\\NVIDIA~2\\CUDA\\v13.0\\bin\\nvcc.exe -forward-unknown-to-host-compiler   -D_WINDOWS -Xcompiler=" /EHsc"  -Xcompiler=" -Ob0 -Od" -std=c++20 "--generate-code=arch=compute_75,code=[compute_75,sm_75]" -Xcompiler=-MDd -Xcompiler=-RTC1 -Xcompiler=-Zi   -Xcompiler=-v -MD -MT CMakeFiles\\cmTC_5672b.dir\\CMakeCUDACompilerABI.cu.obj -MF CMakeFiles\\cmTC_5672b.dir\\CMakeCUDACompilerABI.cu.obj.d -x cu -c "C:\\Program Files\\JetBrains\\CLion 2025.1.4\\bin\\cmake\\win\\x64\\share\\cmake-4.0\\Modules\\CMakeCUDACompilerABI.cu" -o CMakeFiles\\cmTC_5672b.dir\\CMakeCUDACompilerABI.cu.obj -Xcompiler=-FdCMakeFiles\\cmTC_5672b.dir\\,-FS
+        Run Build Command(s): C:/PROGRA~1/JETBRA~1/CLION2~1.4/bin/ninja/win/x64/ninja.exe -v cmTC_08a32
+        [1/2] C:\\PROGRA~1\\NVIDIA~2\\CUDA\\v13.0\\bin\\nvcc.exe -forward-unknown-to-host-compiler   -D_WINDOWS -Xcompiler=" /EHsc"  -Xcompiler=" -Ob0 -Od" -std=c++20 "--generate-code=arch=compute_75,code=[compute_75,sm_75]" -Xcompiler=-MDd -Xcompiler=-RTC1 -Xcompiler=-Zi   -Xcompiler=-v -MD -MT CMakeFiles\\cmTC_08a32.dir\\CMakeCUDACompilerABI.cu.obj -MF CMakeFiles\\cmTC_08a32.dir\\CMakeCUDACompilerABI.cu.obj.d -x cu -c "C:\\Program Files\\JetBrains\\CLion 2025.1.4\\bin\\cmake\\win\\x64\\share\\cmake-4.0\\Modules\\CMakeCUDACompilerABI.cu" -o CMakeFiles\\cmTC_08a32.dir\\CMakeCUDACompilerABI.cu.obj -Xcompiler=-FdCMakeFiles\\cmTC_08a32.dir\\,-FS
         cl : Command line warning D9002 : ignoring unknown option '-v'\x0d
         CMakeCUDACompilerABI.cu\x0d
         cl : Command line warning D9002 : ignoring unknown option '-v'\x0d
         CMakeCUDACompilerABI.cu\x0d
         CMakeCUDACompilerABI.cu\x0d
         cl : Command line warning D9002 : ignoring unknown option '-v'\x0d
-        tmpxft_00005e00_00000000-7_CMakeCUDACompilerABI.cudafe1.cpp\x0d
+        tmpxft_00005b64_00000000-7_CMakeCUDACompilerABI.cudafe1.cpp\x0d
         C:\\Program Files\\JetBrains\\CLion 2025.1.4\\bin\\cmake\\win\\x64\\share\\cmake-4.0\\Modules\\CMakeCompilerCUDAArch.h(10): warning C4305: 'return': truncation from 'int' to 'bool'\x0d
-        [2/2] C:\\WINDOWS\\system32\\cmd.exe /C "cd . && "C:\\Program Files\\JetBrains\\CLion 2025.1.4\\bin\\cmake\\win\\x64\\bin\\cmake.exe" -E vs_link_exe --intdir=CMakeFiles\\cmTC_5672b.dir --rc=C:\\PROGRA~2\\WI3CF2~1\\10\\bin\\100190~1.0\\x64\\rc.exe --mt=C:\\PROGRA~2\\WI3CF2~1\\10\\bin\\100190~1.0\\x64\\mt.exe --manifests  -- C:\\PROGRA~1\\MIB055~1\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\link.exe /nologo CMakeFiles\\cmTC_5672b.dir\\CMakeCUDACompilerABI.cu.obj  /out:cmTC_5672b.exe /implib:cmTC_5672b.lib /pdb:cmTC_5672b.pdb /version:0.0 /machine:x64 -v /debug /INCREMENTAL  cudadevrt.lib  cudart_static.lib -LIBPATH:"C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v13.0/lib/x64" && cd ."
+        [2/2] C:\\WINDOWS\\system32\\cmd.exe /C "cd . && "C:\\Program Files\\JetBrains\\CLion 2025.1.4\\bin\\cmake\\win\\x64\\bin\\cmake.exe" -E vs_link_exe --intdir=CMakeFiles\\cmTC_08a32.dir --rc=C:\\PROGRA~2\\WI3CF2~1\\10\\bin\\100190~1.0\\x64\\rc.exe --mt=C:\\PROGRA~2\\WI3CF2~1\\10\\bin\\100190~1.0\\x64\\mt.exe --manifests  -- C:\\PROGRA~1\\MIB055~1\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\link.exe /nologo CMakeFiles\\cmTC_08a32.dir\\CMakeCUDACompilerABI.cu.obj  /out:cmTC_08a32.exe /implib:cmTC_08a32.lib /pdb:cmTC_08a32.pdb /version:0.0 /machine:x64 -v /debug /INCREMENTAL  cudadevrt.lib  cudart_static.lib -LIBPATH:"C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v13.0/lib/x64" && cd ."
         
       exitCode: 0
   -
@@ -392,19 +392,19 @@ events:
       Parsed CUDA implicit link information:
         link line regex: [^( *|.*[/\\])(ld[0-9]*(|\\.[a-rt-z][a-z]*|\\.s[a-np-z][a-z]*|\\.so[a-z]+)|link\\.exe|lld-link(\\.exe)?|CMAKE_LINK_STARTFILE-NOTFOUND|([^/\\]+-)?ld|collect2)[^/\\]*( |$)]
         linker tool regex: [^[ 	]*(->|")?[ 	]*(([^"]*[/\\])?(ld[0-9]*(|\\.[a-rt-z][a-z]*|\\.s[a-np-z][a-z]*|\\.so[a-z]+)|link\\.exe|lld-link(\\.exe)?))("|,| |$)]
-        ignore line: [Change Dir: 'C:/projects/d-core-cuda/cmake-build-debug/CMakeFiles/CMakeScratch/TryCompile-lnxdkg']
+        ignore line: [Change Dir: 'C:/projects/d-core-cuda/cmake-build-debug/CMakeFiles/CMakeScratch/TryCompile-68ivcj']
         ignore line: []
-        ignore line: [Run Build Command(s): C:/PROGRA~1/JETBRA~1/CLION2~1.4/bin/ninja/win/x64/ninja.exe -v cmTC_5672b]
-        ignore line: [[1/2] C:\\PROGRA~1\\NVIDIA~2\\CUDA\\v13.0\\bin\\nvcc.exe -forward-unknown-to-host-compiler   -D_WINDOWS -Xcompiler=" /EHsc"  -Xcompiler=" -Ob0 -Od" -std=c++20 "--generate-code=arch=compute_75 code=[compute_75 sm_75]" -Xcompiler=-MDd -Xcompiler=-RTC1 -Xcompiler=-Zi   -Xcompiler=-v -MD -MT CMakeFiles\\cmTC_5672b.dir\\CMakeCUDACompilerABI.cu.obj -MF CMakeFiles\\cmTC_5672b.dir\\CMakeCUDACompilerABI.cu.obj.d -x cu -c "C:\\Program Files\\JetBrains\\CLion 2025.1.4\\bin\\cmake\\win\\x64\\share\\cmake-4.0\\Modules\\CMakeCUDACompilerABI.cu" -o CMakeFiles\\cmTC_5672b.dir\\CMakeCUDACompilerABI.cu.obj -Xcompiler=-FdCMakeFiles\\cmTC_5672b.dir\\ -FS]
+        ignore line: [Run Build Command(s): C:/PROGRA~1/JETBRA~1/CLION2~1.4/bin/ninja/win/x64/ninja.exe -v cmTC_08a32]
+        ignore line: [[1/2] C:\\PROGRA~1\\NVIDIA~2\\CUDA\\v13.0\\bin\\nvcc.exe -forward-unknown-to-host-compiler   -D_WINDOWS -Xcompiler=" /EHsc"  -Xcompiler=" -Ob0 -Od" -std=c++20 "--generate-code=arch=compute_75 code=[compute_75 sm_75]" -Xcompiler=-MDd -Xcompiler=-RTC1 -Xcompiler=-Zi   -Xcompiler=-v -MD -MT CMakeFiles\\cmTC_08a32.dir\\CMakeCUDACompilerABI.cu.obj -MF CMakeFiles\\cmTC_08a32.dir\\CMakeCUDACompilerABI.cu.obj.d -x cu -c "C:\\Program Files\\JetBrains\\CLion 2025.1.4\\bin\\cmake\\win\\x64\\share\\cmake-4.0\\Modules\\CMakeCUDACompilerABI.cu" -o CMakeFiles\\cmTC_08a32.dir\\CMakeCUDACompilerABI.cu.obj -Xcompiler=-FdCMakeFiles\\cmTC_08a32.dir\\ -FS]
         ignore line: [cl : Command line warning D9002 : ignoring unknown option '-v'\x0d]
         ignore line: [CMakeCUDACompilerABI.cu\x0d]
         ignore line: [cl : Command line warning D9002 : ignoring unknown option '-v'\x0d]
         ignore line: [CMakeCUDACompilerABI.cu\x0d]
         ignore line: [CMakeCUDACompilerABI.cu\x0d]
         ignore line: [cl : Command line warning D9002 : ignoring unknown option '-v'\x0d]
-        ignore line: [tmpxft_00005e00_00000000-7_CMakeCUDACompilerABI.cudafe1.cpp\x0d]
+        ignore line: [tmpxft_00005b64_00000000-7_CMakeCUDACompilerABI.cudafe1.cpp\x0d]
         ignore line: [C:\\Program Files\\JetBrains\\CLion 2025.1.4\\bin\\cmake\\win\\x64\\share\\cmake-4.0\\Modules\\CMakeCompilerCUDAArch.h(10): warning C4305: 'return': truncation from 'int' to 'bool'\x0d]
-        ignore line: [[2/2] C:\\WINDOWS\\system32\\cmd.exe /C "cd . && "C:\\Program Files\\JetBrains\\CLion 2025.1.4\\bin\\cmake\\win\\x64\\bin\\cmake.exe" -E vs_link_exe --intdir=CMakeFiles\\cmTC_5672b.dir --rc=C:\\PROGRA~2\\WI3CF2~1\\10\\bin\\100190~1.0\\x64\\rc.exe --mt=C:\\PROGRA~2\\WI3CF2~1\\10\\bin\\100190~1.0\\x64\\mt.exe --manifests  -- C:\\PROGRA~1\\MIB055~1\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\link.exe /nologo CMakeFiles\\cmTC_5672b.dir\\CMakeCUDACompilerABI.cu.obj  /out:cmTC_5672b.exe /implib:cmTC_5672b.lib /pdb:cmTC_5672b.pdb /version:0.0 /machine:x64 -v /debug /INCREMENTAL  cudadevrt.lib  cudart_static.lib -LIBPATH:"C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v13.0/lib/x64" && cd ."]
+        ignore line: [[2/2] C:\\WINDOWS\\system32\\cmd.exe /C "cd . && "C:\\Program Files\\JetBrains\\CLion 2025.1.4\\bin\\cmake\\win\\x64\\bin\\cmake.exe" -E vs_link_exe --intdir=CMakeFiles\\cmTC_08a32.dir --rc=C:\\PROGRA~2\\WI3CF2~1\\10\\bin\\100190~1.0\\x64\\rc.exe --mt=C:\\PROGRA~2\\WI3CF2~1\\10\\bin\\100190~1.0\\x64\\mt.exe --manifests  -- C:\\PROGRA~1\\MIB055~1\\2022\\COMMUN~1\\VC\\Tools\\MSVC\\1444~1.352\\bin\\Hostx64\\x64\\link.exe /nologo CMakeFiles\\cmTC_08a32.dir\\CMakeCUDACompilerABI.cu.obj  /out:cmTC_08a32.exe /implib:cmTC_08a32.lib /pdb:cmTC_08a32.pdb /version:0.0 /machine:x64 -v /debug /INCREMENTAL  cudadevrt.lib  cudart_static.lib -LIBPATH:"C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v13.0/lib/x64" && cd ."]
         ignore line: []
         ignore line: []
         linker tool for 'CUDA': C:/PROGRA~1/MIB055~1/2022/COMMUN~1/VC/Tools/MSVC/1444~1.352/bin/Hostx64/x64/link.exe

@@ -1,5 +1,5 @@
-#ifndef CUDA_PLAYGROUND_COMMON_H
-#define CUDA_PLAYGROUND_COMMON_H
+#ifndef COMMON_H
+#define COMMON_H
 
 // #include <cuda_runtime_api.h>
 // #include <cuda.h>
@@ -26,5 +26,10 @@ typedef struct device_pointers {
 	unsigned* out_degrees;
 } device_pointers;
 
+// inline void swap(unsigned& a, unsigned& b) {
+// 	unsigned t = a;
+// 	a = b;
+// 	b = t;
+// }
 
-#endif //CUDA_PLAYGROUND_COMMON_H
+#endif //COMMON_H

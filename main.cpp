@@ -1,14 +1,14 @@
 #include <algorithm>
-#include <barrier>
+// #include <barrier>
 #include <cassert>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <numeric>
 #include <ostream>
-#include <ranges>
-#include <semaphore>
-#include <syncstream>
+// #include <ranges>
+// #include <semaphore>
+// #include <syncstream>
 #include <thread>
 #include <vector>
 
@@ -18,190 +18,190 @@
 
 using namespace std;
 
-// this destroys the graph btw
-vector<degree> Klist(GraphCPU& D, unsigned k) {
-	const unsigned n = D.V;
-
-	int visited = 0;
-	vector<bool> flag(D.V, true);	// this uses the total amount of vertices in the graph?
-	int level = 0;
-
-	int start = 0;
-	int end = 0;
-	vector<vertex> buf(n);
-
-	while (visited < n) {
-
-		// scan for out degree equal to current level or in degree less than k
-		for (vertex v = 0; v < n; v++) {
-			if (!flag[v]) continue;
-
-			if (D.outDegrees[v] == level) {
-				buf[end] = v; end++; flag[v] = false;
-			}
-			else if (D.inDegrees[v] < k) {
-				D.outDegrees[v] = level;	// should this be atomic?
-				buf[end] = v; end++; flag[v] = false;
-			}
-		}
-
-
-		while (start < end) {
-			vertex v = buf[start]; start++; flag[v] = false;
-
-			for (vertex u: D.outEdges[v]) {
-				if (!flag[u]) continue;
-
-				degree d = (D.inDegrees[u]--);	// atomic
-				if (d <= k) {
-					buf[end] = u; end++; flag[u] = false;
-					D.outDegrees[u] = level;
-				}
-			}
-
-			for (vertex w: D.inEdges[v]) {
-				if (!flag[w]) continue;
-
-				if (D.outDegrees[w] > level) {
-					degree d = (D.outDegrees[w]--);	// atomic
-					if (d == (level + 1)) {
-						buf[end] = w; end++; flag[w] = false;
-					}
-					else if (d <= level) {
-						++D.outDegrees[w]; flag[w] = false;
-					}
-				}
-			}
-		}
-
-		visited += end;	// atomic
-		start = 0;
-		end = 0;
-		level++;
-	}
-
-	vector<degree> res(D.V);
-	for (int i = 0; i < D.V; ++i) {
-		res[i] = D.inDegrees[i];
-	}
-	return res;
-}
-
-
-vector<degree> PKlist(GraphCPU& D, unsigned k, unsigned threads) {
-	const unsigned n = D.V;
-
-	atomic<int> visited = 0;
-	vector<bool> flag(D.V, true);	// this uses the total amount of vertices in the graph?
-	vector<int> core(D.V, -1);
-
-	// we need prints!
-	osyncstream bout(cout);
-
-	{
-		vector<jthread> t;
-		barrier sync(threads);
-		unsigned chunkSize = ceil((float)n/(float)threads);
-
-		for (int thread = 0; thread < threads; ++thread) {
-			auto startIdx = thread * chunkSize;
-			auto endIdx = min((thread+1) * chunkSize - 1, n - 1);
-
-			t.emplace_back([&, startIdx, endIdx]() {
-				int start = 0;
-				int end = 0;
-				int level = 0;
-				vector<vertex> buf(n);
-
-				while (visited < n) {
-					// scan for out degree equal to current level or in degree less than k
-					for (vertex v = startIdx; v <= endIdx; v++) {
-						if (!flag[v]) continue;
-
-						if (D.outDegrees[v] == level) {
-							buf[end] = v; end++; flag[v] = false;
-						}
-						else if (D.inDegrees[v] < k) {
-							D.outDegrees[v] = level;	// should this be atomic?
-							core[v] = level;
-							buf[end] = v; end++; flag[v] = false;
-						}
-					}
-
-					while (start < end) {
-						vertex v = buf[start]; start++; flag[v] = false;
-
-						for (vertex u: D.outEdges[v]) {
-							if (!flag[u]) continue;
-
-							degree d = (D.inDegrees[u]--);	// atomic
-							if (d <= k) {
-								if (!flag[u]) continue;
-								buf[end] = u; end++; flag[u] = false;
-								D.outDegrees[u] = level;		// atomic..?
-								core[v] = level;
-							}
-						}
-
-						for (vertex w: D.inEdges[v]) {
-							if (!flag[w]) continue;
-
-							if (D.outDegrees[w] > level) {
-								degree d = (D.outDegrees[w]--);	// atomic
-								if (d == level + 1) {
-									buf[end] = w; end++; flag[w] = false;
-								}
-								else if (d <= level) {
-									++D.outDegrees[w]; flag[w] = false;
-								}
-							}
-						}
-					}
-
-					sync.arrive_and_wait();
-					for (vertex v = 0; v < n; v++) {
-						if (!flag[v] && core[v] == level) {
-							D.outDegrees[v] = level;
-						}
-					}
-
-					visited += end;
-					start = 0;
-					end = 0;
-					level++;
-
-					sync.arrive_and_wait();
-				}
-			});
-		};
-	}
-
-	vector<degree> res(D.V);
-	for (int i = 0; i < D.V; ++i) {
-		res[i] = D.inDegrees[i];
-	}
-	return res;
-}
-
-void Decompose(string filename, unsigned kmax, unsigned threads) {
-	vector<vector<degree>> res;
-
-	for (int k = 0; k <= kmax; ++k) {
-		GraphCPU g(filename);
-		res.push_back(PKlist(g, k, threads));
-	}
-
-	ofstream outfile ("./parres.txt",ios::in|ios::out|ios::binary|ios::trunc);
-	for(int i = 0; i < res.size(); i++) {
-		for(int j = 0; j < res[i].size(); j++){
-			outfile << setw(3);
-			outfile << res[i][j] << " ";
-		}
-		outfile << "\r\n";
-	}
-}
-
-
+// // this destroys the graph btw
+// vector<degree> Klist(GraphCPU& D, unsigned k) {
+// 	const unsigned n = D.V;
+//
+// 	int visited = 0;
+// 	vector<bool> flag(D.V, true);	// this uses the total amount of vertices in the graph?
+// 	int level = 0;
+//
+// 	int start = 0;
+// 	int end = 0;
+// 	vector<vertex> buf(n);
+//
+// 	while (visited < n) {
+//
+// 		// scan for out degree equal to current level or in degree less than k
+// 		for (vertex v = 0; v < n; v++) {
+// 			if (!flag[v]) continue;
+//
+// 			if (D.outDegrees[v] == level) {
+// 				buf[end] = v; end++; flag[v] = false;
+// 			}
+// 			else if (D.inDegrees[v] < k) {
+// 				D.outDegrees[v] = level;	// should this be atomic?
+// 				buf[end] = v; end++; flag[v] = false;
+// 			}
+// 		}
+//
+//
+// 		while (start < end) {
+// 			vertex v = buf[start]; start++; flag[v] = false;
+//
+// 			for (vertex u: D.outEdges[v]) {
+// 				if (!flag[u]) continue;
+//
+// 				degree d = (D.inDegrees[u]--);	// atomic
+// 				if (d <= k) {
+// 					buf[end] = u; end++; flag[u] = false;
+// 					D.outDegrees[u] = level;
+// 				}
+// 			}
+//
+// 			for (vertex w: D.inEdges[v]) {
+// 				if (!flag[w]) continue;
+//
+// 				if (D.outDegrees[w] > level) {
+// 					degree d = (D.outDegrees[w]--);	// atomic
+// 					if (d == (level + 1)) {
+// 						buf[end] = w; end++; flag[w] = false;
+// 					}
+// 					else if (d <= level) {
+// 						++D.outDegrees[w]; flag[w] = false;
+// 					}
+// 				}
+// 			}
+// 		}
+//
+// 		visited += end;	// atomic
+// 		start = 0;
+// 		end = 0;
+// 		level++;
+// 	}
+//
+// 	vector<degree> res(D.V);
+// 	for (int i = 0; i < D.V; ++i) {
+// 		res[i] = D.inDegrees[i];
+// 	}
+// 	return res;
+// }
+//
+//
+// vector<degree> PKlist(GraphCPU& D, unsigned k, unsigned threads) {
+// 	const unsigned n = D.V;
+//
+// 	atomic<int> visited = 0;
+// 	vector<bool> flag(D.V, true);	// this uses the total amount of vertices in the graph?
+// 	vector<int> core(D.V, -1);
+//
+// 	// we need prints!
+// 	osyncstream bout(cout);
+//
+// 	{
+// 		vector<jthread> t;
+// 		barrier sync(threads);
+// 		unsigned chunkSize = ceil((float)n/(float)threads);
+//
+// 		for (int thread = 0; thread < threads; ++thread) {
+// 			auto startIdx = thread * chunkSize;
+// 			auto endIdx = min((thread+1) * chunkSize - 1, n - 1);
+//
+// 			t.emplace_back([&, startIdx, endIdx]() {
+// 				int start = 0;
+// 				int end = 0;
+// 				int level = 0;
+// 				vector<vertex> buf(n);
+//
+// 				while (visited < n) {
+// 					// scan for out degree equal to current level or in degree less than k
+// 					for (vertex v = startIdx; v <= endIdx; v++) {
+// 						if (!flag[v]) continue;
+//
+// 						if (D.outDegrees[v] == level) {
+// 							buf[end] = v; end++; flag[v] = false;
+// 						}
+// 						else if (D.inDegrees[v] < k) {
+// 							D.outDegrees[v] = level;	// should this be atomic?
+// 							core[v] = level;
+// 							buf[end] = v; end++; flag[v] = false;
+// 						}
+// 					}
+//
+// 					while (start < end) {
+// 						vertex v = buf[start]; start++; flag[v] = false;
+//
+// 						for (vertex u: D.outEdges[v]) {
+// 							if (!flag[u]) continue;
+//
+// 							degree d = (D.inDegrees[u]--);	// atomic
+// 							if (d <= k) {
+// 								if (!flag[u]) continue;
+// 								buf[end] = u; end++; flag[u] = false;
+// 								D.outDegrees[u] = level;		// atomic..?
+// 								core[v] = level;
+// 							}
+// 						}
+//
+// 						for (vertex w: D.inEdges[v]) {
+// 							if (!flag[w]) continue;
+//
+// 							if (D.outDegrees[w] > level) {
+// 								degree d = (D.outDegrees[w]--);	// atomic
+// 								if (d == level + 1) {
+// 									buf[end] = w; end++; flag[w] = false;
+// 								}
+// 								else if (d <= level) {
+// 									++D.outDegrees[w]; flag[w] = false;
+// 								}
+// 							}
+// 						}
+// 					}
+//
+// 					sync.arrive_and_wait();
+// 					for (vertex v = 0; v < n; v++) {
+// 						if (!flag[v] && core[v] == level) {
+// 							D.outDegrees[v] = level;
+// 						}
+// 					}
+//
+// 					visited += end;
+// 					start = 0;
+// 					end = 0;
+// 					level++;
+//
+// 					sync.arrive_and_wait();
+// 				}
+// 			});
+// 		};
+// 	}
+//
+// 	vector<degree> res(D.V);
+// 	for (int i = 0; i < D.V; ++i) {
+// 		res[i] = D.inDegrees[i];
+// 	}
+// 	return res;
+// }
+//
+// void Decompose(string filename, unsigned kmax, unsigned threads) {
+// 	vector<vector<degree>> res;
+//
+// 	for (int k = 0; k <= kmax; ++k) {
+// 		GraphCPU g(filename);
+// 		res.push_back(PKlist(g, k, threads));
+// 	}
+//
+// 	ofstream outfile ("./parres.txt",ios::in|ios::out|ios::binary|ios::trunc);
+// 	for(int i = 0; i < res.size(); i++) {
+// 		for(int j = 0; j < res[i].size(); j++){
+// 			outfile << setw(3);
+// 			outfile << res[i][j] << " ";
+// 		}
+// 		outfile << "\r\n";
+// 	}
+// }
+//
+//
 
 
 int num_of_thread = 8;
@@ -356,216 +356,216 @@ vector<int> Parpeel(GraphCPU& g, int k, vector<int> upper, vector<int> kBin, vec
     return Dout;
 }
 
-//
-// vector<int> kshell(GraphCPU& g, vector<int> dIn, vector<int>& kBin, vector<int>& vert){
-// 	unsigned n = g.V;
-// 	vector<int> pos;
-//
-// 	pos.resize(n+1);
-// 	vert.resize(n);
-// 	kBin.resize(n);
-//
-// 	// kBin is now [in degrees = 0, in degrees = 1, in degrees = 2, ... in degrees = n-1]
-// 	for (unsigned v = 0; v < n; v++) {
-// 		kBin[dIn[v]] += 1;
-// 	}
-//
-// 	// k upper limit from in degrees
-// 	int kUpper = *max_element(dIn.begin(),dIn.end());
-//
-// 	// partial sum
-// 	// kBin is now [0, in degrees <= 1, in degrees <= 2, ... in degrees <= kUpper ... 0, 0, 0]
-// 	int start = 0;
-// 	for (int i = 0; i <= kUpper; i++) {
-// 		int num = kBin[i];
-// 		kBin[i] = start;
-// 		start += num;
-// 	}
-//
-// 	for (unsigned v = 0; v < n; v++) {
-// 		pos[v] = kBin[dIn[v]];
-// 		vert[pos[v]] = v;
-// 		kBin[dIn[v]] += 1;
-// 	}
-//
-// 	// this inserts 0 at the start
-// 	for (int i = kUpper; i > 0; i--) {
-// 		kBin[i] = kBin[i - 1];
-// 	}
-// 	kBin[0] = 0;
-//
-// 	// for (int i = 0; i < 20; i++)
-// 	// 	cout << kBin[i] << " ";
-// 	// cout << endl;
-//
-//
-// 	int record = -1;
-// 	vector<int> result(n);
-// 	int resultPos = 0;
-// 	for (int i = 0; i < n; i++){
-// 		if (dIn[vert[i]] != record){
-// 			result[resultPos] = dIn[vert[i]];
-// 			resultPos ++;
-// 			record = dIn[vert[i]];
-// 		}
-// 	}
-// 	result[0] = -1;
-// 	int maxK = record;
-// 	for (int i = 1; i < resultPos; i++){
-// 		result[i] = result[i-1] + 1;
-// 	}
-// 	result[resultPos] = maxK;
-//
-// 	std::vector<int> res;
-// 	for (int i = 1; i < resultPos + 1; i++){
-// 		res.push_back(result[i]);
-// 	}
-//
-// 	return res;
-// }
-//
-//
-// void PDC(GraphCPU& g){
-// 	unsigned n = g.V;
-//
-//     //获取线程数
-//     int NUM_THREADS = num_of_thread;
-//     omp_set_num_threads(NUM_THREADS);
-//
-//
-// 	// find out k-max
-//     int vis_num = 0;
-//
-//     std::vector<int> dIn, dOut;
-//     dIn.resize(n);
-//     dOut.resize(n);
-//     for (int i = 0; i < n; i++) {
-//         dOut[i] = g.outDegrees[i];
-//         dIn[i] = g.inDegrees[i];
-//     }
-//
-//     //每个线程运行这部分代码
-// #pragma omp parallel
-// {
-//     int level = 0;
-//
-//     long buff_size = n;
-//
-//     int *buff = (int *)malloc(buff_size*sizeof(int));
-//     assert(buff != NULL);
-//
-//     int start = 0, end = 0;
-//
-//     while(vis_num < n){
-//         //获取in-degree为level的顶点
-//         #pragma omp for schedule(static)
-//         for(int i = 0; i < n; i++){
-//             if(dIn[i] == level){
-//                 buff[end] = i;
-//                 end++;
-//             }
-//         }
-//
-//         //处理buff中的顶点
-//         while(start < end){
-//             int v = buff[start];
-//             start++;
-//
-//             for(int j = 0; j < g.outEdges[v].size(); j++){
-//                 int u = g.outEdges[v][j];
-//                 int din_u = dIn[u];
-//
-//                 if(din_u > level){
-//                     int du = __sync_fetch_and_sub(&dIn[u], 1);
-//                     //将下一个level的顶点放在buff末尾
-//                     if(du==(level+1)){
-//                         buff[end] = u;
-//                         end++;
-//                     }
-//
-//                     if(du <= level) __sync_fetch_and_add(&dIn[u], 1);
-//                 }
-//
-//             }
-//         }
-//
-//         //累计处理过的顶点数
-//         __sync_fetch_and_add(&vis_num, end);
-//
-//         #pragma omp barrier
-//         start = 0;
-//         end = 0;
-//         level = level+1;
-//     }
-//
-//     free(buff);
-// }
-//
-//     int level = *max_element(dIn.begin(),dIn.end());
-//
-// 	cout << "k-max: " << level << endl;
-//
-//     //找出k-shell对应的k
-// 	vector<int> kBin;
-// 	vector<int> vert;
-//
-//     vector<int> kshells;
-//     kshells = kshell(g, dIn, kBin, vert);
-//
-// 	cout << kshells.size() << " shells: ";
-// 	for (auto s: kshells) {
-// 		cout << "(k," << s << ") ";
-// 	}
-// 	cout << endl;
-//
-//
-//     //对于shell中的每个k, 调用l的分解算法
-//     std::vector<std::vector<int>> Fres;
-//
-// 	vector<int> init(g.V);
-// 	for (int i = 0; i < g.V; i++)
-// 		init[i] = g.outDegrees[i];
-//
-// 	Fres.push_back(Parpeel(g, 0, init, kBin, vert));
-//
-//     for(int i = 1; i < kshells.size(); i++)
-//     	// Fres.back() here can also just be init
-//         Fres.push_back(Parpeel(g, kshells[i],Fres.back(), kBin, vert));
-//
-//     //write results: 1 row
-// 	std::ofstream outfile ("./res.txt",ios::in|ios::out|ios::binary|ios::trunc);
-// 	for (int i = 0; i < Fres.size(); i++) {
-// 		for(int j = 0; j < Fres[i].size(); j++){
-// 			outfile << setw(3);
-// 			if (Fres[i][j] > 20) //this should be lmax?
-// 				outfile << -1 << " ";
-// 			else
-// 				outfile << Fres[i][j] << " ";
-// 		}
-// 		outfile << "\r\n";
-// 	}
-//
-//     printf("decomposition done.\n");
-// }
+
+vector<int> kshell(GraphCPU& g, vector<int> dIn, vector<int>& kBin, vector<int>& vert){
+	unsigned n = g.V;
+	vector<int> pos;
+
+	pos.resize(n+1);
+	vert.resize(n);
+	kBin.resize(n);
+
+	// kBin is now [in degrees = 0, in degrees = 1, in degrees = 2, ... in degrees = n-1]
+	for (unsigned v = 0; v < n; v++) {
+		kBin[dIn[v]] += 1;
+	}
+
+	// k upper limit from in degrees
+	int kUpper = *max_element(dIn.begin(),dIn.end());
+
+	// partial sum
+	// kBin is now [0, in degrees <= 1, in degrees <= 2, ... in degrees <= kUpper ... 0, 0, 0]
+	int start = 0;
+	for (int i = 0; i <= kUpper; i++) {
+		int num = kBin[i];
+		kBin[i] = start;
+		start += num;
+	}
+
+	for (unsigned v = 0; v < n; v++) {
+		pos[v] = kBin[dIn[v]];
+		vert[pos[v]] = v;
+		kBin[dIn[v]] += 1;
+	}
+
+	// this inserts 0 at the start
+	for (int i = kUpper; i > 0; i--) {
+		kBin[i] = kBin[i - 1];
+	}
+	kBin[0] = 0;
+
+	// for (int i = 0; i < 20; i++)
+	// 	cout << kBin[i] << " ";
+	// cout << endl;
+
+
+	int record = -1;
+	vector<int> result(n);
+	int resultPos = 0;
+	for (int i = 0; i < n; i++){
+		if (dIn[vert[i]] != record){
+			result[resultPos] = dIn[vert[i]];
+			resultPos ++;
+			record = dIn[vert[i]];
+		}
+	}
+	result[0] = -1;
+	int maxK = record;
+	for (int i = 1; i < resultPos; i++){
+		result[i] = result[i-1] + 1;
+	}
+	result[resultPos] = maxK;
+
+	std::vector<int> res;
+	for (int i = 1; i < resultPos + 1; i++){
+		res.push_back(result[i]);
+	}
+
+	return res;
+}
+
+
+void PDC(GraphCPU& g){
+	unsigned n = g.V;
+
+    //获取线程数
+    int NUM_THREADS = num_of_thread;
+    omp_set_num_threads(NUM_THREADS);
+
+
+	// find out k-max
+    int vis_num = 0;
+
+    std::vector<int> dIn, dOut;
+    dIn.resize(n);
+    dOut.resize(n);
+    for (int i = 0; i < n; i++) {
+        dOut[i] = g.outDegrees[i];
+        dIn[i] = g.inDegrees[i];
+    }
+
+    //每个线程运行这部分代码
+#pragma omp parallel
+{
+    int level = 0;
+
+    long buff_size = n;
+
+    int *buff = (int *)malloc(buff_size*sizeof(int));
+    assert(buff != NULL);
+
+    int start = 0, end = 0;
+
+    while(vis_num < n){
+        //获取in-degree为level的顶点
+        #pragma omp for schedule(static)
+        for(int i = 0; i < n; i++){
+            if(dIn[i] == level){
+                buff[end] = i;
+                end++;
+            }
+        }
+
+        //处理buff中的顶点
+        while(start < end){
+            int v = buff[start];
+            start++;
+
+            for(int j = 0; j < g.outEdges[v].size(); j++){
+                int u = g.outEdges[v][j];
+                int din_u = dIn[u];
+
+                if(din_u > level){
+                    int du = __sync_fetch_and_sub(&dIn[u], 1);
+                    //将下一个level的顶点放在buff末尾
+                    if(du==(level+1)){
+                        buff[end] = u;
+                        end++;
+                    }
+
+                    if(du <= level) __sync_fetch_and_add(&dIn[u], 1);
+                }
+
+            }
+        }
+
+        //累计处理过的顶点数
+        __sync_fetch_and_add(&vis_num, end);
+
+        #pragma omp barrier
+        start = 0;
+        end = 0;
+        level = level+1;
+    }
+
+    free(buff);
+}
+
+    int level = *max_element(dIn.begin(),dIn.end());
+
+	cout << "k-max: " << level << endl;
+
+    //找出k-shell对应的k
+	vector<int> kBin;
+	vector<int> vert;
+
+    vector<int> kshells;
+    kshells = kshell(g, dIn, kBin, vert);
+
+	cout << kshells.size() << " shells: ";
+	for (auto s: kshells) {
+		cout << "(k," << s << ") ";
+	}
+	cout << endl;
+
+
+    //对于shell中的每个k, 调用l的分解算法
+    std::vector<std::vector<int>> Fres;
+
+	vector<int> init(g.V);
+	for (int i = 0; i < g.V; i++)
+		init[i] = g.outDegrees[i];
+
+	Fres.push_back(Parpeel(g, 0, init, kBin, vert));
+
+    for(int i = 1; i < kshells.size(); i++)
+    	// Fres.back() here can also just be init
+        Fres.push_back(Parpeel(g, kshells[i],Fres.back(), kBin, vert));
+
+    //write results: 1 row
+	std::ofstream outfile ("./res_wiki-vote.txt",ios::in|ios::out|ios::binary|ios::trunc);
+	for (int i = 0; i < Fres.size(); i++) {
+		for(int j = 0; j < Fres[i].size(); j++){
+			outfile << setw(3);
+			if (Fres[i][j] > 20) //this should be lmax?
+				outfile << -1 << " ";
+			else
+				outfile << Fres[i][j] << " ";
+		}
+		outfile << "\r\n";
+	}
+
+    printf("decomposition done.\n");
+}
 
 
 
 int main(int argc, char *argv[]) {
-	const string filename = "../dataset/congress.txt";
+	const string filename = "../dataset/wiki-vote.txt";
 
-    // cout << "Graph loading started... " << endl;
-    // GraphCPU g(filename);
+    cout << "Graph loading started... " << endl;
+    GraphCPU g(filename);
 	// GraphCPU g2(filename);
-	// cout << ">" << filename << endl;
-	// cout << "V: " << g.V << endl;
-	// cout << "E: " << g.E << endl;
+	cout << ">" << filename << endl;
+	cout << "V: " << g.V << endl;
+	cout << "E: " << g.E << endl;
 	// cout << "AVG_IN_DEGREE: " << g.AVG_IN_DEGREE << endl;
 	// cout << "AVG_OUT_DEGREE: " << g.AVG_OUT_DEGREE << endl;
 	// cout << "AVG_DEGREE: " << (g.E * 2.0f) / g.V << endl;
 
-	Decompose(filename, 15, 1);
+	// Decompose(filename, 15, 1);
 
-	// PDC(g);
+	PDC(g);
 
 	// auto start = chrono::steady_clock::now();
 	// auto a = PKlist(g, 0, 1);
