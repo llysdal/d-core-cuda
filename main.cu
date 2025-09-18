@@ -99,15 +99,15 @@ __global__ void process(device_pointers d_p, unsigned k, unsigned level, unsigne
 				unsigned u = d_p.out_neighbors[j];
 
 				if (!visited[u]) {
-					unsigned a = atomicSub(d_p.in_degrees + u, 1);
+					unsigned uInDegree = atomicSub(d_p.in_degrees + u, 1);
 
 					// if (a <= k) {
-					if (a <= k && atomicTestAndSet(&visited[u])) {
+					if (uInDegree <= k && atomicTestAndSet(&visited[u])) {
 						// visited[u] = true;
 						unsigned loc = atomicAdd(&bufferTail, 1);
 						writeToBuffer(buffer, loc, u);
 
-						*(d_p.out_degrees + u) = level;
+						d_p.out_degrees[u] = level;
 					}
 				}
 			}
@@ -178,6 +178,8 @@ void dcore(Graph &g) {
 	bool debug = false;
 
 	auto startDecomp = chrono::steady_clock::now();
+
+	// lets do k-shell here on the CPU to figure out what we need to calculate :)
 
 	for (unsigned k = 0; k <= kmax; ++k) {
 		// moving to GPU
