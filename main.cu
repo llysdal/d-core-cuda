@@ -14,7 +14,7 @@
 using namespace std;
 
 
-__global__ void scan(device_pointers d_p, unsigned k, unsigned level, unsigned V, unsigned* buffers, unsigned* bufferTails, unsigned* visited) {
+__global__ void scan(device_pointers d_p, unsigned k, unsigned level, unsigned V, unsigned* buffers, unsigned* bufferTails, unsigned* visited, int* core) {
 	__shared__ unsigned* buffer;
 	__shared__ unsigned bufferTail;
 
@@ -42,7 +42,7 @@ __global__ void scan(device_pointers d_p, unsigned k, unsigned level, unsigned V
 			// visited[v] = true;
 			unsigned loc = atomicAdd(&bufferTail, 1);
 			writeToBuffer(buffer, loc, v);
-			d_p.out_degrees[v] = level;
+			d_p.out_degrees[v] = level; core[v] = level;
 		}
 	}
 	__syncthreads();
@@ -52,7 +52,7 @@ __global__ void scan(device_pointers d_p, unsigned k, unsigned level, unsigned V
 	}
 }
 
-__global__ void process(device_pointers d_p, unsigned k, unsigned level, unsigned V, unsigned* buffers, unsigned* bufferTails, unsigned* visited, unsigned int* global_count) {
+__global__ void process(device_pointers d_p, unsigned k, unsigned level, unsigned V, unsigned* buffers, unsigned* bufferTails, unsigned* visited, int* core, unsigned int* global_count) {
 	__shared__ unsigned bufferTail;
 	__shared__ unsigned* buffer;
 	__shared__ unsigned base;
@@ -107,7 +107,7 @@ __global__ void process(device_pointers d_p, unsigned k, unsigned level, unsigne
 						unsigned loc = atomicAdd(&bufferTail, 1);
 						writeToBuffer(buffer, loc, u);
 
-						d_p.out_degrees[u] = level;
+						d_p.out_degrees[u] = level; core[u] = level;
 					}
 				}
 			}
@@ -144,8 +144,19 @@ __global__ void process(device_pointers d_p, unsigned k, unsigned level, unsigne
 		}
 	}
 
+	__syncthreads();
 	if (IS_MAIN_THREAD && bufferTail > 0) {
 		atomicAdd(global_count, bufferTail);
+	}
+
+	unsigned global_threadIdx = blockIdx.x * blockDim.x + threadIdx.x;
+	for (unsigned base = 0; base < V; base += THREAD_COUNT) {
+		vertex v = base + global_threadIdx;
+
+		if (v >= V) continue;
+
+		if (visited[v] && core[v] == level)
+			d_p.out_degrees[v] = level;
 	}
 }
 
@@ -193,13 +204,16 @@ void dcore(Graph &g) {
 		unsigned* buffers = nullptr;
 		unsigned* bufferTails = nullptr;
 		unsigned* visited = nullptr;
+		int* core = nullptr;
 
 		cudaMalloc(&buffers, BUFFER_SIZE * BLOCK_NUMS * sizeof(unsigned));
 		cudaMalloc(&bufferTails, BLOCK_NUMS * sizeof(unsigned));
 		cudaMalloc(&global_count, sizeof(unsigned));
 		cudaMemset(global_count, 0, sizeof(unsigned));
-		cudaMalloc(&visited, g.V * sizeof(bool));
-		cudaMemset(visited, 0, g.V * sizeof(bool));
+		cudaMalloc(&visited, g.V * sizeof(unsigned));
+		cudaMemset(visited, 0, g.V * sizeof(unsigned));
+		cudaMalloc(&core, g.V * sizeof(int));
+		cudaMemset(core, -1, g.V * sizeof(int));
 
 		if (debug) cout << "D-core Computation Started for k=" << k << endl;
 
@@ -208,8 +222,8 @@ void dcore(Graph &g) {
 		while (count < g.V) {
 			cudaMemset(bufferTails, 0, BLOCK_NUMS * sizeof(unsigned));
 
-			scan<<<BLOCK_NUMS, BLOCK_DIM>>>(d_p, k, level, g.V, buffers, bufferTails, visited);
-			process<<<BLOCK_NUMS, BLOCK_DIM>>>(d_p, k, level, g.V, buffers, bufferTails, visited, global_count);
+			scan<<<BLOCK_NUMS, BLOCK_DIM>>>(d_p, k, level, g.V, buffers, bufferTails, visited, core);
+			process<<<BLOCK_NUMS, BLOCK_DIM>>>(d_p, k, level, g.V, buffers, bufferTails, visited, core, global_count);
 
 			cudaMemcpy(&count, global_count, sizeof(unsigned), cudaMemcpyDeviceToHost);
 			// cout << "*********Completed level: " << level << ", global_count: " << count << " *********" << endl;
