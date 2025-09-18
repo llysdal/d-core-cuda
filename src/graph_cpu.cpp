@@ -8,6 +8,7 @@
 
 #include "./graph_cpu.h"
 
+#include <algorithm>
 
 
 using namespace std;
@@ -74,12 +75,23 @@ void GraphCPU::readFile(const string& inputFile) {
 	}
 
 	// setup degrees
-	inDegrees = vector<atomic<degree>>(V);
-	outDegrees = vector<atomic<degree>>(V);
+	inDegrees = vector<degree>(V);
+	outDegrees = vector<degree>(V);
 	for (int i=0; i<V; i++) {
 		inDegrees[i] = inEdges[i].size();
 		outDegrees[i] = outEdges[i].size();
 	}
+
+	// for (int i = 0; i < V; i++) {
+	// 	sort(inEdges[i].begin(), inEdges[i].end(),
+	// 		[&](const int& a, const int& b) -> bool {
+	// 			return outDegrees[a] > outDegrees[b];
+	// 	});
+	// 	sort(outEdges[i].begin(), outEdges[i].end(),
+	// 		[&](const int& a, const int& b) -> bool {
+	// 			return inDegrees[a] > inDegrees[b];
+	// 	});
+	// }
 
 	// get average degree (this might overflow?)
 	// AVG_IN_DEGREE = accumulate(inDegrees.begin(), inDegrees.end(), 0.0f) / inDegrees.size();

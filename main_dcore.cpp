@@ -65,7 +65,7 @@ int main(int argc, char *argv[]) {
     // int type = 7;
     // int type = 9;
     // int type = 1;
-    int t = 1;
+    int t = 8;
     // // =============================================
     // printf("file: %s; \t algorithm: %d; \t threads: %d\n", filepath.c_str(), type, t);
 

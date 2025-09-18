@@ -23,8 +23,8 @@ class GraphCPU {
 	vector<pair<vertex, vertex>> edges;
 	// std::vector<unsigned int> neighbors;
 	// std::vector<unsigned int> neighbors_offset;
-	vector<atomic<degree>> inDegrees;
-	vector<atomic<degree>> outDegrees;
+	vector<degree> inDegrees;
+	vector<degree> outDegrees;
 	// unsigned int kmax, dmax;
 	GraphCPU();
 	GraphCPU& operator=(const GraphCPU&);
