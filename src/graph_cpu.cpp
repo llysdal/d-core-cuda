@@ -75,8 +75,8 @@ void GraphCPU::readFile(const string& inputFile) {
 	}
 
 	// setup degrees
-	inDegrees = vector<degree>(V);
-	outDegrees = vector<degree>(V);
+	inDegrees = vector<atomic<degree>>(V);
+	outDegrees = vector<atomic<degree>>(V);
 	for (int i=0; i<V; i++) {
 		inDegrees[i] = inEdges[i].size();
 		outDegrees[i] = outEdges[i].size();

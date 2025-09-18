@@ -12,4 +12,8 @@ __device__ inline void writeToBuffer(unsigned* buffer, unsigned loc, unsigned va
 	buffer[loc] = val;
 }
 
+__device__ inline bool atomicTestAndSet(unsigned* adr) {
+	return !atomicCAS(adr, 0, 1);
+}
+
 #endif //D_CORE_CUDA_COMMON_CUH

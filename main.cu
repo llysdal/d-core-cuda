@@ -14,7 +14,7 @@
 using namespace std;
 
 
-__global__ void scan(device_pointers d_p, unsigned k, unsigned level, unsigned V, unsigned* buffers, unsigned* bufferTails, bool* visited) {
+__global__ void scan(device_pointers d_p, unsigned k, unsigned level, unsigned V, unsigned* buffers, unsigned* bufferTails, unsigned* visited) {
 	__shared__ unsigned* buffer;
 	__shared__ unsigned bufferTail;
 
@@ -31,13 +31,15 @@ __global__ void scan(device_pointers d_p, unsigned k, unsigned level, unsigned V
 		if (visited[v]) continue;
 		if (v >= V) continue;
 
-		if (d_p.out_degrees[v] == level) {
-			visited[v] = true;
+		// if (d_p.out_degrees[v] == level) {
+		if (d_p.out_degrees[v] == level && atomicTestAndSet(&visited[v])) {
+			// visited[v] = true;
 			unsigned loc = atomicAdd(&bufferTail, 1);
 			writeToBuffer(buffer, loc, v);
 		}
-		if (d_p.in_degrees[v] < k) {
-			visited[v] = true;
+		// if (d_p.in_degrees[v] < k) {
+		if (d_p.in_degrees[v] < k && atomicTestAndSet(&visited[v])) {
+			// visited[v] = true;
 			unsigned loc = atomicAdd(&bufferTail, 1);
 			writeToBuffer(buffer, loc, v);
 			d_p.out_degrees[v] = level;
@@ -50,7 +52,7 @@ __global__ void scan(device_pointers d_p, unsigned k, unsigned level, unsigned V
 	}
 }
 
-__global__ void process(device_pointers d_p, unsigned k, unsigned level, unsigned V, unsigned* buffers, unsigned* bufferTails, bool* visited, unsigned int* global_count) {
+__global__ void process(device_pointers d_p, unsigned k, unsigned level, unsigned V, unsigned* buffers, unsigned* bufferTails, unsigned* visited, unsigned int* global_count) {
 	__shared__ unsigned bufferTail;
 	__shared__ unsigned* buffer;
 	__shared__ unsigned base;
@@ -99,13 +101,13 @@ __global__ void process(device_pointers d_p, unsigned k, unsigned level, unsigne
 				if (!visited[u]) {
 					unsigned a = atomicSub(d_p.in_degrees + u, 1);
 
-					if (a <= k) {
+					// if (a <= k) {
+					if (a <= k && atomicTestAndSet(&visited[u])) {
+						// visited[u] = true;
 						unsigned loc = atomicAdd(&bufferTail, 1);
 						writeToBuffer(buffer, loc, u);
 
 						*(d_p.out_degrees + u) = level;
-
-						visited[u] = true;
 					}
 				}
 			}
@@ -127,14 +129,16 @@ __global__ void process(device_pointers d_p, unsigned k, unsigned level, unsigne
 						unsigned a = atomicSub(d_p.out_degrees + w, 1);
 
 						if (a == level + 1) {
+						// if (a == level + 1 && atomicTestAndSet(&visited[w])) {
+							visited[w] = true;
 							unsigned loc = atomicAdd(&bufferTail, 1);
 							writeToBuffer(buffer, loc, w);
-							visited[w] = true;
 						}
 						else if (a <= level) {
+						// else if (a <= level && atomicTestAndSet(&visited[w])) {
+							visited[w] = true;
 							// oops we decremented too much
 							atomicAdd(d_p.out_degrees + w, 1);
-							visited[w] = true;
 						}
 					}
 				}
@@ -170,7 +174,7 @@ degree* getResultFromGPU(device_pointers& d_p, unsigned size) {
 }
 
 void dcore(Graph &g) {
-	unsigned kmax = 16;
+	unsigned kmax = 15;
 	vector<degree*> res;
 
 	bool debug = false;
@@ -188,7 +192,7 @@ void dcore(Graph &g) {
 		unsigned* global_count;
 		unsigned* buffers = nullptr;
 		unsigned* bufferTails = nullptr;
-		bool* visited = nullptr;
+		unsigned* visited = nullptr;
 
 		cudaMalloc(&buffers, BUFFER_SIZE * BLOCK_NUMS * sizeof(unsigned));
 		cudaMalloc(&bufferTails, BLOCK_NUMS * sizeof(unsigned));
