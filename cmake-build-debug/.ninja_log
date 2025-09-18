@@ -1,11 +1,17 @@
 # ninja log v6
-2	343	7798297238399494	build.ninja	29a4357dcc7f8522
-2	343	7798297238369498	C:/projects/d-core-cuda/cmake-build-debug/cmake_install.cmake	29a4357dcc7f8522
-1241	1362	7798108780335119	d_core_cuda.exe	e24657f523f42aeb
-272	2125	7798107137503179	CMakeFiles/d_core_cuda.dir/src/graph_cpu.cpp.obj	bf983b3a4aa65e17
-269	2124	7798107137463203	CMakeFiles/d_core_cuda.dir/src/graph.cpp.obj	e6970b128f515d85
-173	1241	7798108769665475	CMakeFiles/d_core_cuda.dir/main.cpp.obj	34022be4783188a2
-10	717	7798301473687781	CMakeFiles/d_core_cuda.dir/src/graph_cpu.cpp.obj	98cec8b9579d039a
-10	717	7798301664249303	CMakeFiles/d_core_cuda.dir/main.cpp.obj	816b43f1378a7e9f
-6	570	7798302345291877	CMakeFiles/d_core_cuda.dir/src/graph.cpp.obj	dc13c8c395c116a2
-570	782	7798302350930609	d_core_cuda.exe	619500c7350b93f1
+40	715	7798876673696410	build.ninja	29a4357dcc7f8522
+40	715	7798876673656405	C:/projects/d-core-cuda/cmake-build-debug/cmake_install.cmake	29a4357dcc7f8522
+2791	3138	7798875701804530	d_core_cuda.exe	e9ee8127a825f0ae
+17	633	7798310883688346	CMakeFiles/d_core_cuda.dir/src/graph.cpp.obj	dc13c8c395c116a2
+20	754	7798310883708381	CMakeFiles/d_core_cuda.dir/src/graph_cpu.cpp.obj	98cec8b9579d039a
+31	2317	7798875674213520	CMakeFiles/d_core_cuda.dir/main_dcore.cpp.obj	ef8ccf05356c19bc
+25	333	7798875674153540	CMakeFiles/d_core_cuda.dir/src-dcore/Edge.cpp.obj	df202809bea0dbc8
+22	798	7798310883738354	CMakeFiles/d_core_cuda.dir/main.cpp.obj	816b43f1378a7e9f
+28	2791	7798875674183542	CMakeFiles/d_core_cuda.dir/src-dcore/Graph_v2_test.cpp.obj	b1f6837af1edaa05
+2	353	7798876673696410	build.ninja	29a4357dcc7f8522
+2	353	7798876673696410	C:/projects/d-core-cuda/cmake-build-debug/cmake_install.cmake	29a4357dcc7f8522
+21	245	7798876674526404	d_core_cuda.exe	619500c7350b93f1
+6	676	7798877025296290	CMakeFiles/d_core_cuda.dir/src/graph_cpu.cpp.obj	98cec8b9579d039a
+676	874	7798877032003928	d_core_cuda.exe	619500c7350b93f1
+5	749	7798883101609697	CMakeFiles/d_core_cuda.dir/main.cpp.obj	816b43f1378a7e9f
+749	956	7798883109048789	d_core_cuda.exe	619500c7350b93f1

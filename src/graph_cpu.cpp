@@ -82,8 +82,8 @@ void GraphCPU::readFile(const string& inputFile) {
 	}
 
 	// get average degree (this might overflow?)
-	AVG_IN_DEGREE = accumulate(inDegrees.begin(), inDegrees.end(), 0.0f) / inDegrees.size();
-	AVG_OUT_DEGREE = accumulate(outDegrees.begin(), outDegrees.end(), 0.0f) / outDegrees.size();
+	// AVG_IN_DEGREE = accumulate(inDegrees.begin(), inDegrees.end(), 0.0f) / inDegrees.size();
+	// AVG_OUT_DEGREE = accumulate(outDegrees.begin(), outDegrees.end(), 0.0f) / outDegrees.size();
 
 
 	// cout << edges[0].first << " " << edges[0].second << endl;

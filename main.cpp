@@ -419,9 +419,9 @@ int main(int argc, char *argv[]) {
     // cout << "Graph loading started... " << endl;
     GraphCPU g(filename);
 	// GraphCPU g2(filename);
- //    cout << ">" << filename << endl;
- //    cout << "V: " << g.V << endl;
- //    cout << "E: " << g.E << endl;
+	cout << ">" << filename << endl;
+	cout << "V: " << g.V << endl;
+	cout << "E: " << g.E << endl;
 	// cout << "AVG_IN_DEGREE: " << g.AVG_IN_DEGREE << endl;
 	// cout << "AVG_OUT_DEGREE: " << g.AVG_OUT_DEGREE << endl;
 	// cout << "AVG_DEGREE: " << (g.E * 2.0f) / g.V << endl;
