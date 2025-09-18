@@ -28,7 +28,7 @@ __global__ void scan(device_pointers d_p, unsigned k, unsigned level, unsigned V
 	for (unsigned base = 0; base < V; base += THREAD_COUNT) {
 		vertex v = base + global_threadIdx;
 
-		if (visited[v]) continue;
+		if (visited[v]) continue;	// actually not needed anymore but lets keep him
 		if (v >= V) continue;
 
 		// if (d_p.out_degrees[v] == level) {
@@ -123,23 +123,21 @@ __global__ void process(device_pointers d_p, unsigned k, unsigned level, unsigne
 			if (j < inEnd) {
 				unsigned w = d_p.in_neighbors[j];
 
-				if (!visited[w]) {
-					if (*(d_p.out_degrees + w) > level) {
-						// an issue could be several threads accessing the same neighbor and decrementing too much?
-						unsigned a = atomicSub(d_p.out_degrees + w, 1);
+				if (d_p.out_degrees[w] > level && !visited[w]) {
+					// an issue could be several threads accessing the same neighbor and decrementing too much?
+					unsigned wOutDegree = atomicSub(d_p.out_degrees + w, 1);
 
-						if (a == level + 1) {
-						// if (a == level + 1 && atomicTestAndSet(&visited[w])) {
-							visited[w] = true;
-							unsigned loc = atomicAdd(&bufferTail, 1);
-							writeToBuffer(buffer, loc, w);
-						}
-						else if (a <= level) {
-						// else if (a <= level && atomicTestAndSet(&visited[w])) {
-							visited[w] = true;
-							// oops we decremented too much
-							atomicAdd(d_p.out_degrees + w, 1);
-						}
+					// if (a == level + 1) {
+					if (wOutDegree == (level + 1) && atomicTestAndSet(&visited[w])) {
+						// visited[w] = true;
+						unsigned loc = atomicAdd(&bufferTail, 1);
+						writeToBuffer(buffer, loc, w);
+					}
+					else if (wOutDegree <= level) {
+					// else if (a <= level && atomicTestAndSet(&visited[w])) {
+						// visited[w] = true;	// should this really be commented out?!?
+						// oops we decremented too much
+						atomicAdd(d_p.out_degrees + w, 1);
 					}
 				}
 			}
