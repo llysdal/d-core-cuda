@@ -164,7 +164,7 @@ degree* getResultFromGPU(degree* core, unsigned size) {
 }
 
 
-void dcore(Graph &g, const string& outputFile) {
+vector<degree*> dcore(Graph &g) {
 // ***** setting up GPU memory *****
 	auto startMemory = chrono::steady_clock::now();
 
@@ -250,19 +250,22 @@ void dcore(Graph &g, const string& outputFile) {
 
 	cout << "\tlmax: " << lmax << endl;
 
-// ***** writing out result to file *****
+	return res;
+}
+
+void writeDCoreResults(unsigned V, vector<degree*>& values, const string& outputFile) {
 	auto startWrite = chrono::steady_clock::now();
 	ofstream bin;
 	bin.open(outputFile, ios::binary | ios::out);
 	if (bin) {
-		for (const auto r: res)
-			bin.write(reinterpret_cast<char*>(r), static_cast<streamsize>(g.V * sizeof(degree)));
+		for (const auto r: values)
+			bin.write(reinterpret_cast<char*>(r), static_cast<streamsize>(V * sizeof(degree)));
 	} else {
 		cout << outputFile << ": could not open file" << endl;
 	}
 	auto endWrite = chrono::steady_clock::now();
 	cout << "D-core results written\t\t" << chrono::duration_cast<chrono::milliseconds>(endWrite - startWrite).count() << "ms" << endl;
-
+	// this is for writing to text files
 	// long long width = to_string(lmax).length();
 	// ofstream outfile ("../results/cudares.txt",ios::out|ios::binary|ios::trunc);
 	// for (int i = 0; i < res.size(); i++) {
@@ -275,14 +278,17 @@ void dcore(Graph &g, const string& outputFile) {
 }
 
 
-
-
-
 int main(int argc, char *argv[]) {
-	const string filename = "../dataset/amazon0601";
+	const string filename = "../dataset/live_journal";
+
+	auto start = chrono::steady_clock::now();
 
     Graph g(filename);
     cout << "> " << filename  << " V: " << g.V << " E: " << g.E << endl;
 
-	dcore(g, "../results/cudares");
+	vector<degree*> res = dcore(g);
+	writeDCoreResults(g.V, res, "../results/cudares");
+
+	auto end = chrono::steady_clock::now();
+	cout << "Total time: " << chrono::duration_cast<chrono::milliseconds>(end - start).count() << "ms" << endl;
 }

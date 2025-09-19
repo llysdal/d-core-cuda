@@ -13,7 +13,7 @@ include_directories("dataset")
 
 file(GLOB_RECURSE CPP_SOURCES RELATIVE ${CMAKE_SOURCE_DIR} "src/*.cpp")
 file(GLOB_RECURSE CUDA_SOURCES RELATIVE ${CMAKE_SOURCE_DIR} "src/*.cu")
-file(GLOB_RECURSE SOURCES_DCORE RELATIVE ${CMAKE_SOURCE_DIR} "src-dcore/*.cpp")
+#file(GLOB_RECURSE SOURCES_DCORE RELATIVE ${CMAKE_SOURCE_DIR} "src-dcore/*.cpp")
 
 add_executable(d_core_cuda ${CPP_SOURCES} ${CUDA_SOURCES} main.cu)
 #add_executable(d_core_cuda ${CPP_SOURCES} main.cpp)

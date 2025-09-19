@@ -41,6 +41,9 @@ void Graph::readFile(const string& inputFile) {
 	// done reading from the file
 	infile.close();
 	cout << "> Read in data..." << endl;
+
+	// todo: we oughta trim the empty vertices away from the set here
+
 	// amount of edges
 	E = edges.size();
 
