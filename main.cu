@@ -100,21 +100,14 @@ __global__ void process(device_pointers d_p, unsigned k, unsigned level, unsigne
 			outStart += WARP_SIZE;
 
 			if (j < outEnd) {
-				unsigned u = d_p.out_neighbors[j];
+				vertex u = d_p.out_neighbors[j];
+				degree uInDegree = atomicSub(d_p.in_degrees + u, 1);
 
-				// if (!visited[u]) {
-					unsigned uInDegree = atomicSub(d_p.in_degrees + u, 1);
-
-					// if (a <= k) {
-					if (uInDegree == k && atomicTestAndSet(&visited[u])) {
-						// visited[u] = true;
-						unsigned loc = atomicAdd(&bufferTail, 1);
-						writeToBuffer(buffer, loc, u);
-
-						// d_p.out_degrees[u] = level;
-						core[u] = level;
-					}
-				// }
+				if (uInDegree == k && atomicTestAndSet(&visited[u])) {
+					unsigned loc = atomicAdd(&bufferTail, 1);
+					writeToBuffer(buffer, loc, u);
+					core[u] = level;
+				}
 			}
 		}
 
@@ -126,26 +119,14 @@ __global__ void process(device_pointers d_p, unsigned k, unsigned level, unsigne
 			inStart += WARP_SIZE;
 
 			if (j < inEnd) {
-				unsigned w = d_p.in_neighbors[j];
+				vertex w = d_p.in_neighbors[j];
+				degree wOutDegree = atomicSub(d_p.out_degrees + w, 1);
 
-				// if (d_p.out_degrees[w] > level) {
-					// an issue could be several threads accessing the same neighbor and decrementing too much?
-					unsigned wOutDegree = atomicSub(d_p.out_degrees + w, 1);
-
-					// if (wOutDegree == level + 1) {
-					if (wOutDegree == (level + 1) && atomicTestAndSet(&visited[w])) {
-						// visited[w] = true;
-						unsigned loc = atomicAdd(&bufferTail, 1);
-						writeToBuffer(buffer, loc, w);
-						core[w] = level;
-					}
-					// else if (wOutDegree <= level) {
-					// // else if (wOutDegree <= level && atomicTestAndSet(&visited[w])) {
-					// 	// visited[w] = true;	// should this really be commented out?!?
-					// 	// oops we decremented too much
-					// 	atomicAdd(d_p.out_degrees + w, 1);
-					// }
-				// }
+				if (wOutDegree == (level + 1) && atomicTestAndSet(&visited[w])) {
+					unsigned loc = atomicAdd(&bufferTail, 1);
+					writeToBuffer(buffer, loc, w);
+					core[w] = level;
+				}
 			}
 		}
 	}
@@ -154,18 +135,6 @@ __global__ void process(device_pointers d_p, unsigned k, unsigned level, unsigne
 	if (IS_MAIN_THREAD && bufferTail > 0) {
 		atomicAdd(global_count, bufferTail);
 	}
-
-	// error correction?? because we might've incremented or decremented after setting something to level (we use core)
-	//	maybe this part "overfits"? like it fixes issues that are inherent to the algo, but sometimes when the algo goes real wrong it cant fix it
-	// unsigned global_threadIdx = blockIdx.x * blockDim.x + threadIdx.x;
-	// for (unsigned base = 0; base < V; base += THREAD_COUNT) {
-	// 	vertex v = base + global_threadIdx;
-	//
-	// 	if (v >= V) continue;
-	//
-	// 	if (visited[v] && core[v] == level)
-	// 		d_p.out_degrees[v] = level;
-	// }
 }
 
 void moveGraphToGPU(Graph& g, device_pointers& d_p) {
@@ -254,11 +223,13 @@ void dcore(Graph &g) {
 	refreshGraphOnGPU(g, d_p);
 
 	auto endKmax = chrono::steady_clock::now();
-	cout << "D-core k-max (" << kmax << ") done\t\t" << chrono::duration_cast<chrono::milliseconds>(endKmax - startKmax).count() << "ms" << endl;
+	cout << "D-core k-max done\t\t" << chrono::duration_cast<chrono::milliseconds>(endKmax - startKmax).count() << "ms" << endl;
+	cout << "\tkmax: " << kmax << endl;
+
 
 	// time for the decomposition
 	auto startDecomp = chrono::steady_clock::now();
-	vector<unsigned> lmaxes;
+	degree lmax = 0;
 	for (unsigned k = 0; k <= kmax; ++k) {
 
 		refreshGraphOnGPU(g, d_p);
@@ -285,7 +256,7 @@ void dcore(Graph &g) {
 			level++;
 		}
 
-		lmaxes.push_back(level - 1);
+		lmax = max(lmax, level - 1);
 		if (debug) cout << "l-max " << level-1 << endl;
 
 		auto end = chrono::steady_clock::now();
@@ -299,11 +270,10 @@ void dcore(Graph &g) {
 	auto endDecomp = chrono::steady_clock::now();
 	cout << "D-core decomp done\t\t" << chrono::duration_cast<chrono::milliseconds>(endDecomp - startDecomp).count() << "ms" << endl;
 
-	auto lmax_max = *max_element(lmaxes.begin(), lmaxes.end());
-	cout << "\tmax lmax: " << lmax_max << endl;
+	cout << "\tlmax: " << lmax << endl;
 
-	long long width = to_string(lmax_max).length();
-	ofstream outfile ("./cudares.txt",ios::in|ios::out|ios::binary|ios::trunc);
+	long long width = to_string(lmax).length();
+	ofstream outfile ("../results/cudares.txt",ios::in|ios::out|ios::binary|ios::trunc);
 	for (int i = 0; i < res.size(); i++) {
 		for(int j = 0; j < g.V; j++){
 			outfile << setw(width);
