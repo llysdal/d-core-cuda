@@ -14,8 +14,13 @@
 using namespace std;
 
 
-__global__ void scan(device_pointers d_p, unsigned k, unsigned level, unsigned V, unsigned* buffers, unsigned* bufferTails, unsigned* visited, degree* core) {
-	__shared__ unsigned* buffer;
+/*
+ *	Each block gets a buffer
+ *	Each thread gets a set of vertices only it accesses, which they then add to their respective block buffer
+ *	We do not have to think about atomicity other than for the buffer tails, as we are guaranteed that our set of vertices are unique
+ */
+__global__ void scan(device_pointers d_p, unsigned k, unsigned level, unsigned V, vertex* buffers, unsigned* bufferTails, unsigned* visited, degree* core) {
+	__shared__ vertex* buffer;
 	__shared__ unsigned bufferTail;
 
 	if (IS_MAIN_THREAD) {
@@ -28,21 +33,19 @@ __global__ void scan(device_pointers d_p, unsigned k, unsigned level, unsigned V
 	for (unsigned base = 0; base < V; base += THREAD_COUNT) {
 		vertex v = base + global_threadIdx;
 
-		if (visited[v]) continue;	// actually not needed anymore but lets keep him
+		if (visited[v]) continue;
 		if (v >= V) continue;
 
 		if (d_p.out_degrees[v] == level) {
-		// if (d_p.out_degrees[v] == level && atomicTestAndSet(&visited[v])) {
 			visited[v] = true;
 			unsigned loc = atomicAdd(&bufferTail, 1);
-			writeToBuffer(buffer, loc, v);
+			writeVertexToBuffer(buffer, loc, v);
 			core[v] = level;
 		}
 		else if (d_p.in_degrees[v] < k) {
-		// else if (d_p.in_degrees[v] < k && atomicTestAndSet(&visited[v])) {
 			visited[v] = true;
 			unsigned loc = atomicAdd(&bufferTail, 1);
-			writeToBuffer(buffer, loc, v);
+			writeVertexToBuffer(buffer, loc, v);
 			d_p.out_degrees[v] = level;
 			core[v] = level;
 		}
@@ -54,9 +57,17 @@ __global__ void scan(device_pointers d_p, unsigned k, unsigned level, unsigned V
 	}
 }
 
-__global__ void process(device_pointers d_p, unsigned k, unsigned level, unsigned V, unsigned* buffers, unsigned* bufferTails, unsigned* visited, int* core, unsigned int* global_count) {
+/*
+ *	Each block have a buffer, which is the same as in the scan phase, we also get the buffer tail from the scan phase
+ *	Each warp will process the in- and out-neighbors from a vertex in the block buffer
+ *	This will go on, until there are no vertices left in the block buffers
+ *	Here we care about atomicity (especially around the visited array, as we should only visit each vertex once)
+ *
+ *	This kind of wrecks the out degrees in the graph, but it doesn't matter as we ensure that the core array reflects the true out degrees
+ */
+__global__ void process(device_pointers d_p, unsigned k, unsigned level, unsigned V, vertex* buffers, unsigned* bufferTails, unsigned* visited, degree* core, unsigned int* global_count) {
 	__shared__ unsigned bufferTail;
-	__shared__ unsigned* buffer;
+	__shared__ vertex* buffer;
 	__shared__ unsigned base;
 	unsigned regTail;
 	unsigned i;
@@ -86,47 +97,35 @@ __global__ void process(device_pointers d_p, unsigned k, unsigned level, unsigne
 				base = regTail;
 		}
 
-		unsigned v = readFromBuffer(buffer, i);
-		unsigned inStart	= d_p.in_neighbors_offset[v];
-		unsigned inEnd		= d_p.in_neighbors_offset[v + 1];
-		unsigned outStart	= d_p.out_neighbors_offset[v];
-		unsigned outEnd		= d_p.out_neighbors_offset[v + 1];
+		vertex v = readVertexFromBuffer(buffer, i);
+		offset inStart	= d_p.in_neighbors_offset[v];
+		offset inEnd	= d_p.in_neighbors_offset[v + 1];
+		offset outStart	= d_p.out_neighbors_offset[v];
+		offset outEnd	= d_p.out_neighbors_offset[v + 1];
 
-		while (true) {
-			__syncwarp();
-			if (outStart >= outEnd) break;
+		for (offset o = outStart; o < outEnd; o += WARP_SIZE) {
+			if (o + LANE_ID >= outEnd) continue;
 
-			unsigned j = outStart + LANE_ID;
-			outStart += WARP_SIZE;
+			vertex u = d_p.out_neighbors[o + LANE_ID];
+			degree u_in_degree = atomicSub(d_p.in_degrees + u, 1);
 
-			if (j < outEnd) {
-				vertex u = d_p.out_neighbors[j];
-				degree u_in_degree = atomicSub(d_p.in_degrees + u, 1);
-
-				if (u_in_degree == k && atomicTestAndSet(&visited[u])) {
-					unsigned loc = atomicAdd(&bufferTail, 1);
-					writeToBuffer(buffer, loc, u);
-					core[u] = level;
-				}
+			if (u_in_degree == k && atomicTestAndSet(&visited[u])) {
+				unsigned loc = atomicAdd(&bufferTail, 1);
+				writeVertexToBuffer(buffer, loc, u);
+				core[u] = level;
 			}
 		}
 
-		while (true) {
-			__syncwarp();
-			if (inStart >= inEnd) break;
+		for (offset o = inStart; o < inEnd; o += WARP_SIZE) {
+			if (o + LANE_ID >= inEnd) continue;
 
-			unsigned j = inStart + LANE_ID;
-			inStart += WARP_SIZE;
+			vertex w = d_p.in_neighbors[o + LANE_ID];
+			degree w_out_degree = atomicSub(d_p.out_degrees + w, 1);
 
-			if (j < inEnd) {
-				vertex w = d_p.in_neighbors[j];
-				degree w_out_degree = atomicSub(d_p.out_degrees + w, 1);
-
-				if (w_out_degree == (level + 1) && atomicTestAndSet(&visited[w])) {
-					unsigned loc = atomicAdd(&bufferTail, 1);
-					writeToBuffer(buffer, loc, w);
-					core[w] = level;
-				}
+			if (w_out_degree == (level + 1) && atomicTestAndSet(&visited[w])) {
+				unsigned loc = atomicAdd(&bufferTail, 1);
+				writeVertexToBuffer(buffer, loc, w);
+				core[w] = level;
 			}
 		}
 	}
@@ -165,12 +164,8 @@ degree* getResultFromGPU(degree* core, unsigned size) {
 }
 
 
-void dcore(Graph &g) {
-	bool debug = false;
-
-	vector<degree*> res;
-
-	// setting up GPU memory
+void dcore(Graph &g, const string& outputFile) {
+// ***** setting up GPU memory *****
 	auto startMemory = chrono::steady_clock::now();
 
 	unsigned* buffers = nullptr;
@@ -179,10 +174,10 @@ void dcore(Graph &g) {
 	unsigned* visited = nullptr;
 	degree* core = nullptr;
 
-	cudaMalloc(&buffers, BUFFER_SIZE * BLOCK_NUMS * sizeof(unsigned));
+	cudaMalloc(&buffers, BUFFER_SIZE * BLOCK_NUMS * sizeof(vertex));
 	cudaMalloc(&bufferTails, BLOCK_NUMS * sizeof(unsigned));
 	cudaMalloc(&global_count, sizeof(unsigned));
-	cudaMalloc(&visited, g.V * sizeof(unsigned));
+	cudaMalloc(&visited, g.V * sizeof(unsigned));	// unsigned instead of bool since atomicCAS only doesn't do bools
 	cudaMalloc(&core, g.V * sizeof(degree));
 
 	// moving to GPU
@@ -193,14 +188,11 @@ void dcore(Graph &g) {
 	cout << "D-core memory setup done\t" << chrono::duration_cast<chrono::milliseconds>(endMemory - startMemory).count() << "ms" << endl;
 
 
-	// kmax!!
+// ***** calculating k-max *****
 	auto startKmax = chrono::steady_clock::now();
 	unsigned level = 0;
 	unsigned count = 0;
-	// do a flip!!
-	swap(d_p.in_degrees, d_p.out_degrees);
-	swap(d_p.in_neighbors, d_p.out_neighbors);
-	swap(d_p.in_neighbors_offset, d_p.out_neighbors_offset);
+	swapInOut(d_p); // do a flip!! (we're calculating the 0 l-list)
 
 	cudaMemset(global_count, 0, sizeof(unsigned));
 	cudaMemset(visited, 0, g.V * sizeof(unsigned));
@@ -215,11 +207,9 @@ void dcore(Graph &g) {
 		cudaMemcpy(&count, global_count, sizeof(unsigned), cudaMemcpyDeviceToHost);
 		level++;
 	}
+
 	unsigned kmax = level - 1;
-	// lets fix the mess we made...
-	swap(d_p.in_degrees, d_p.out_degrees);
-	swap(d_p.in_neighbors, d_p.out_neighbors);
-	swap(d_p.in_neighbors_offset, d_p.out_neighbors_offset);
+	swapInOut(d_p); // let's fix the mess we made...
 	refreshGraphOnGPU(g, d_p);
 
 	auto endKmax = chrono::steady_clock::now();
@@ -227,13 +217,12 @@ void dcore(Graph &g) {
 	cout << "\tkmax: " << kmax << endl;
 
 
-	// time for the decomposition
+// ***** time to do the d-core decomposition *****
 	auto startDecomp = chrono::steady_clock::now();
+	vector<degree*> res;
 	degree lmax = 0;
 	for (unsigned k = 0; k <= kmax; ++k) {
-
-		refreshGraphOnGPU(g, d_p);
-		if (debug) cout << "Refreshed graph on device..." << endl;
+		refreshGraphOnGPU(g, d_p);	// degrees will be wrecked from previous calculation
 
 		level = 0;
 		count = 0;
@@ -241,10 +230,6 @@ void dcore(Graph &g) {
 		cudaMemset(global_count, 0, sizeof(unsigned));
 		cudaMemset(visited, 0, g.V * sizeof(unsigned));
 		cudaMemset(core, -1, g.V * sizeof(degree));
-
-		if (debug) cout << "D-core Computation Started for k=" << k << endl;
-
-		auto start = chrono::steady_clock::now();
 
 		while (count < g.V) {
 			cudaMemset(bufferTails, 0, BLOCK_NUMS * sizeof(unsigned));
@@ -257,14 +242,7 @@ void dcore(Graph &g) {
 		}
 
 		lmax = max(lmax, level - 1);
-		if (debug) cout << "l-max " << level-1 << endl;
-
-		auto end = chrono::steady_clock::now();
-		if (debug) cout << "D-core done, it took " << chrono::duration_cast<chrono::milliseconds>(end - start).count() << "ms" << endl;
-
-		auto r = getResultFromGPU(core, g.V);
-
-		res.push_back(r);
+		res.push_back(getResultFromGPU(core, g.V));
 	}
 
 	auto endDecomp = chrono::steady_clock::now();
@@ -272,25 +250,39 @@ void dcore(Graph &g) {
 
 	cout << "\tlmax: " << lmax << endl;
 
-	long long width = to_string(lmax).length();
-	ofstream outfile ("../results/cudares.txt",ios::in|ios::out|ios::binary|ios::trunc);
-	for (int i = 0; i < res.size(); i++) {
-		for(int j = 0; j < g.V; j++){
-			outfile << setw(width);
-			outfile << res[i][j] << " ";
-		}
-		outfile << "\r\n";
+// ***** writing out result to file *****
+	auto startWrite = chrono::steady_clock::now();
+	ofstream bin;
+	bin.open(outputFile, ios::binary | ios::out);
+	if (bin) {
+		for (const auto r: res)
+			bin.write(reinterpret_cast<char*>(r), static_cast<streamsize>(g.V * sizeof(degree)));
+	} else {
+		cout << outputFile << ": could not open file" << endl;
 	}
+	auto endWrite = chrono::steady_clock::now();
+	cout << "D-core results written\t\t" << chrono::duration_cast<chrono::milliseconds>(endWrite - startWrite).count() << "ms" << endl;
+
+	// long long width = to_string(lmax).length();
+	// ofstream outfile ("../results/cudares.txt",ios::out|ios::binary|ios::trunc);
+	// for (int i = 0; i < res.size(); i++) {
+	// 	for(int j = 0; j < g.V; j++){
+	// 		outfile << setw(width);
+	// 		outfile << res[i][j] << " ";
+	// 	}
+	// 	outfile << "\r\n";
+	// }
 }
 
+
+
+
+
 int main(int argc, char *argv[]) {
-	const string filename = "../dataset/wiki-vote.txt";
+	const string filename = "../dataset/amazon0601";
 
-    cout << "Graph loading started... " << endl;
     Graph g(filename);
-    cout << ">" << filename << endl;
-    cout << "V: " << g.V << endl;
-    cout << "E: " << g.E << endl;
+    cout << "> " << filename  << " V: " << g.V << " E: " << g.E << endl;
 
-	dcore(g);
+	dcore(g, "../results/cudares");
 }

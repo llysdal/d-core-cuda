@@ -11,10 +11,6 @@ class Graph {
 public:
 	unsigned V;
 	unsigned E;
-	unsigned E_IN;
-	unsigned E_OUT;
-	double AVG_IN_DEGREE = 0;
-	double AVG_OUT_DEGREE = 0;
 	vertex* in_neighbors;
 	vertex* out_neighbors;
 	offset* in_neighbors_offset;
@@ -25,6 +21,8 @@ public:
 	Graph();
 	explicit Graph(const string& inputFile);
 	void readFile(const string& inputFile);
+	void writeBinary(const string& inputFile);
+	bool readBinary(const string& inputFile);
 	~Graph();
 };
 

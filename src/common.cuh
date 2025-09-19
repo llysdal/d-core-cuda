@@ -3,11 +3,11 @@
 
 #include "common.h"
 
-__device__ inline unsigned readFromBuffer(unsigned* buffer, unsigned loc) {
+__device__ inline vertex readVertexFromBuffer(vertex* buffer, unsigned loc) {
 	assert(loc < BUFFER_SIZE);
 	return buffer[loc];
 }
-__device__ inline void writeToBuffer(unsigned* buffer, unsigned loc, unsigned val) {
+__device__ inline void writeVertexToBuffer(vertex* buffer, unsigned loc, vertex val) {
 	assert(loc < BUFFER_SIZE);
 	buffer[loc] = val;
 }

@@ -14,7 +14,6 @@ Graph::Graph() {
 	// default constructor
 }
 
-
 void Graph::readFile(const string& inputFile) {
     ifstream infile;
     infile.open(inputFile);
@@ -73,11 +72,8 @@ void Graph::readFile(const string& inputFile) {
 
 	cout << "> Set up offsets..." << endl;
 
-	E_IN = in_neighbors_offset[V];
-	E_OUT = out_neighbors_offset[V];
-
-	in_neighbors = new vertex[E_IN];
-	out_neighbors = new vertex[E_OUT];
+	in_neighbors = new vertex[E];
+	out_neighbors = new vertex[E];
 
 	#pragma omp parallel for
 	for (vertex v = 0; v < V; v++) {
@@ -85,6 +81,7 @@ void Graph::readFile(const string& inputFile) {
 		for (offset j = in_neighbors_offset[v]; j < in_neighbors_offset[v+1]; j++, it++)
 			in_neighbors[j] = *it;
 	}
+
 	#pragma omp parallel for
 	for (vertex v = 0; v < V; v++) {
 		auto it = outEdges[v].begin();
@@ -93,21 +90,75 @@ void Graph::readFile(const string& inputFile) {
 	}
 
 	cout << "> Set up neighbors..." << endl;
+}
 
-	// get average degree (this might overflow?)
-	// AVG_IN_DEGREE = accumulate(inDegrees.begin(), inDegrees.end(), 0.0f) / inDegrees.size();
-	// AVG_OUT_DEGREE = accumulate(outDegrees.begin(), outDegrees.end(), 0.0f) / outDegrees.size();
+void Graph::writeBinary(const string& inputFile) {
+	ofstream bin;
+	bin.open(inputFile + string("-binary"), ios::binary | ios::out);
+
+	if (bin) {
+		cout << "Graph writing binary..." << endl;
+		auto start = chrono::steady_clock::now();
+		bin.write(reinterpret_cast<char*>(&V), sizeof(unsigned));
+		bin.write(reinterpret_cast<char*>(&E), sizeof(unsigned));
+		bin.write(reinterpret_cast<char*>(in_degrees), static_cast<streamsize>(V * sizeof(degree)));
+		bin.write(reinterpret_cast<char*>(out_degrees), static_cast<streamsize>(V * sizeof(degree)));
+		bin.write(reinterpret_cast<char*>(in_neighbors_offset), static_cast<streamsize>((V + 1) * sizeof(offset)));
+		bin.write(reinterpret_cast<char*>(out_neighbors_offset), static_cast<streamsize>((V + 1) * sizeof(offset)));
+		bin.write(reinterpret_cast<char*>(in_neighbors), static_cast<streamsize>(E * sizeof(vertex)));
+		bin.write(reinterpret_cast<char*>(out_neighbors), static_cast<streamsize>(E * sizeof(vertex)));
+
+		bin.close();
+		auto end = chrono::steady_clock::now();
+		cout << "Graph binary written\t\t" << chrono::duration_cast<chrono::milliseconds>(end - start).count() << "ms" << endl;
+	} else {
+		cout << inputFile + string("-binary") << ": could not open file" << endl;
+	}
+}
+
+bool Graph::readBinary(const string& inputFile) {
+	ifstream bin;
+	bin.open(inputFile + string("-binary"), ios::binary | ios::in);
+	if (bin) {
+		cout << "Graph reading binary..." << endl;
+		auto start = chrono::steady_clock::now();
+		bin.read(reinterpret_cast<char*>(&V), sizeof(unsigned));
+		bin.read(reinterpret_cast<char*>(&E), sizeof(unsigned));
+		in_degrees = new degree[V];
+		out_degrees = new degree[V];
+		in_neighbors_offset = new offset[V+1];
+		out_neighbors_offset = new offset[V+1];
+		in_neighbors = new vertex[E];
+		out_neighbors = new vertex[E];
+		bin.read(reinterpret_cast<char*>(in_degrees), static_cast<streamsize>(V * sizeof(degree)));
+		bin.read(reinterpret_cast<char*>(out_degrees), static_cast<streamsize>(V * sizeof(degree)));
+		bin.read(reinterpret_cast<char*>(in_neighbors_offset), static_cast<streamsize>((V + 1) * sizeof(offset)));
+		bin.read(reinterpret_cast<char*>(out_neighbors_offset), static_cast<streamsize>((V + 1) * sizeof(offset)));
+		bin.read(reinterpret_cast<char*>(in_neighbors), static_cast<streamsize>(E * sizeof(vertex)));
+		bin.read(reinterpret_cast<char*>(out_neighbors), static_cast<streamsize>(E * sizeof(vertex)));
+
+		bin.close();
+		auto end = chrono::steady_clock::now();
+		cout << "Graph binary read\t\t" << chrono::duration_cast<chrono::milliseconds>(end - start).count() << "ms" << endl;
+		return true;
+	} else {
+		cout << inputFile + string("-binary") << ": could not open file" << endl;
+	}
+	return false;
 }
 
 Graph::Graph(const string& inputFile){
-    cout << "Graph reading file... " << endl;
+	if (readBinary(inputFile)) return;
 
+    cout << "Graph reading file..." << endl;
     auto start = chrono::steady_clock::now();
     readFile(inputFile);
     auto end = chrono::steady_clock::now();
+    cout << "Graph file loaded\t\t" << chrono::duration_cast<chrono::milliseconds>(end - start).count() << "ms" << endl;
 
-    cout << "Graph file loaded in: " << chrono::duration_cast<chrono::milliseconds>(end - start).count() << "ms" << endl;
+	writeBinary(inputFile);
 }
+
 Graph::~Graph() {
     delete[] in_neighbors;
     delete[] out_neighbors;

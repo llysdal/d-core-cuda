@@ -30,10 +30,10 @@ typedef struct device_pointers {
 	degree* out_degrees;
 } device_pointers;
 
-// inline void swap(unsigned& a, unsigned& b) {
-// 	unsigned t = a;
-// 	a = b;
-// 	b = t;
-// }
+inline void swapInOut(device_pointers& d_p) {
+	std::swap(d_p.in_degrees, d_p.out_degrees);
+	std::swap(d_p.in_neighbors, d_p.out_neighbors);
+	std::swap(d_p.in_neighbors_offset, d_p.out_neighbors_offset);
+}
 
 #endif //COMMON_H
