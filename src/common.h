@@ -21,16 +21,25 @@ typedef int degree;
 typedef unsigned vertex;
 typedef unsigned offset;
 
-typedef struct device_pointers {
+typedef struct device_graph_pointers {
 	vertex* in_neighbors;
 	vertex* out_neighbors;
 	offset* in_neighbors_offset;
 	offset* out_neighbors_offset;
 	degree* in_degrees;
 	degree* out_degrees;
-} device_pointers;
+} device_graph_pointers;
 
-inline void swapInOut(device_pointers& d_p) {
+typedef struct device_accessory_pointers {
+	unsigned* buffers;		// each block has a buffer of size BUFFER_SIZE
+	unsigned* bufferTails;	// each block has a buffer tail for keeping track of where to write
+	unsigned* global_count;	// this is the total amount of processed vertices across all blocks
+	unsigned* visited ;		// the set of processed nodes - we only process each node once
+	degree* core;			// the resulting l-values (?) to form the k-list
+} device_accessory_pointers;
+
+inline void swapInOut(device_graph_pointers& d_p) {
+	// this is an easy way to turn our KList function into an LList function!
 	std::swap(d_p.in_degrees, d_p.out_degrees);
 	std::swap(d_p.in_neighbors, d_p.out_neighbors);
 	std::swap(d_p.in_neighbors_offset, d_p.out_neighbors_offset);
