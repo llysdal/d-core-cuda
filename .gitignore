@@ -5,6 +5,9 @@
 dataset/*
 # results
 results/*
+# nsys stuff
+nsys/*.sqlite
+nsys/*.nsys-rep
 
 # User-specific stuff
 .idea/workspace.xml
