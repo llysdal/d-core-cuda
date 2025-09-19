@@ -1,3 +1,0 @@
-C:/projects/d-core-cuda/cmake-build-debug/CMakeFiles/d_core_cuda.dir
-C:/projects/d-core-cuda/cmake-build-debug/CMakeFiles/edit_cache.dir
-C:/projects/d-core-cuda/cmake-build-debug/CMakeFiles/rebuild_cache.dir
