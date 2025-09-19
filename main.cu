@@ -101,9 +101,9 @@ __global__ void process(device_pointers d_p, unsigned k, unsigned level, unsigne
 
 			if (j < outEnd) {
 				vertex u = d_p.out_neighbors[j];
-				degree uInDegree = atomicSub(d_p.in_degrees + u, 1);
+				degree u_in_degree = atomicSub(d_p.in_degrees + u, 1);
 
-				if (uInDegree == k && atomicTestAndSet(&visited[u])) {
+				if (u_in_degree == k && atomicTestAndSet(&visited[u])) {
 					unsigned loc = atomicAdd(&bufferTail, 1);
 					writeToBuffer(buffer, loc, u);
 					core[u] = level;
@@ -120,9 +120,9 @@ __global__ void process(device_pointers d_p, unsigned k, unsigned level, unsigne
 
 			if (j < inEnd) {
 				vertex w = d_p.in_neighbors[j];
-				degree wOutDegree = atomicSub(d_p.out_degrees + w, 1);
+				degree w_out_degree = atomicSub(d_p.out_degrees + w, 1);
 
-				if (wOutDegree == (level + 1) && atomicTestAndSet(&visited[w])) {
+				if (w_out_degree == (level + 1) && atomicTestAndSet(&visited[w])) {
 					unsigned loc = atomicAdd(&bufferTail, 1);
 					writeToBuffer(buffer, loc, w);
 					core[w] = level;
