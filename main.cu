@@ -14,7 +14,7 @@
 using namespace std;
 
 
-__global__ void scan(device_pointers d_p, unsigned k, unsigned level, unsigned V, unsigned* buffers, unsigned* bufferTails, unsigned* visited, int* core) {
+__global__ void scan(device_pointers d_p, unsigned k, unsigned level, unsigned V, unsigned* buffers, unsigned* bufferTails, unsigned* visited, degree* core) {
 	__shared__ unsigned* buffer;
 	__shared__ unsigned bufferTail;
 
@@ -28,21 +28,23 @@ __global__ void scan(device_pointers d_p, unsigned k, unsigned level, unsigned V
 	for (unsigned base = 0; base < V; base += THREAD_COUNT) {
 		vertex v = base + global_threadIdx;
 
-		// if (visited[v]) continue;	// actually not needed anymore but lets keep him
+		if (visited[v]) continue;	// actually not needed anymore but lets keep him
 		if (v >= V) continue;
 
-		// if (d_p.out_degrees[v] == level) {
-		if (d_p.out_degrees[v] == level && atomicTestAndSet(&visited[v])) {
-			// visited[v] = true;
+		if (d_p.out_degrees[v] == level) {
+		// if (d_p.out_degrees[v] == level && atomicTestAndSet(&visited[v])) {
+			visited[v] = true;
 			unsigned loc = atomicAdd(&bufferTail, 1);
 			writeToBuffer(buffer, loc, v);
+			core[v] = level;
 		}
-		// if (d_p.in_degrees[v] < k) {
-		if (d_p.in_degrees[v] < k && atomicTestAndSet(&visited[v])) {
-			// visited[v] = true;
+		else if (d_p.in_degrees[v] < k) {
+		// else if (d_p.in_degrees[v] < k && atomicTestAndSet(&visited[v])) {
+			visited[v] = true;
 			unsigned loc = atomicAdd(&bufferTail, 1);
 			writeToBuffer(buffer, loc, v);
-			d_p.out_degrees[v] = level; core[v] = level;
+			d_p.out_degrees[v] = level;
+			core[v] = level;
 		}
 	}
 	__syncthreads();
@@ -66,6 +68,8 @@ __global__ void process(device_pointers d_p, unsigned k, unsigned level, unsigne
 		buffer = buffers + blockIdx.x * BUFFER_SIZE;
 		assert(buffer != nullptr);
 	}
+
+	__syncthreads();
 
 	while (true) {
 		__syncthreads();
@@ -98,18 +102,19 @@ __global__ void process(device_pointers d_p, unsigned k, unsigned level, unsigne
 			if (j < outEnd) {
 				unsigned u = d_p.out_neighbors[j];
 
-				if (!visited[u]) {
+				// if (!visited[u]) {
 					unsigned uInDegree = atomicSub(d_p.in_degrees + u, 1);
 
 					// if (a <= k) {
-					if (uInDegree <= k && atomicTestAndSet(&visited[u])) {
+					if (uInDegree == k && atomicTestAndSet(&visited[u])) {
 						// visited[u] = true;
 						unsigned loc = atomicAdd(&bufferTail, 1);
 						writeToBuffer(buffer, loc, u);
 
-						d_p.out_degrees[u] = level; core[u] = level;
+						// d_p.out_degrees[u] = level;
+						core[u] = level;
 					}
-				}
+				// }
 			}
 		}
 
@@ -123,7 +128,7 @@ __global__ void process(device_pointers d_p, unsigned k, unsigned level, unsigne
 			if (j < inEnd) {
 				unsigned w = d_p.in_neighbors[j];
 
-				if (d_p.out_degrees[w] > level && !visited[w]) {
+				// if (d_p.out_degrees[w] > level) {
 					// an issue could be several threads accessing the same neighbor and decrementing too much?
 					unsigned wOutDegree = atomicSub(d_p.out_degrees + w, 1);
 
@@ -132,14 +137,15 @@ __global__ void process(device_pointers d_p, unsigned k, unsigned level, unsigne
 						// visited[w] = true;
 						unsigned loc = atomicAdd(&bufferTail, 1);
 						writeToBuffer(buffer, loc, w);
+						core[w] = level;
 					}
-					else if (wOutDegree <= level) {
-					// else if (wOutDegree <= level && atomicTestAndSet(&visited[w])) {
-						// visited[w] = true;	// should this really be commented out?!?
-						// oops we decremented too much
-						atomicAdd(d_p.out_degrees + w, 1);
-					}
-				}
+					// else if (wOutDegree <= level) {
+					// // else if (wOutDegree <= level && atomicTestAndSet(&visited[w])) {
+					// 	// visited[w] = true;	// should this really be commented out?!?
+					// 	// oops we decremented too much
+					// 	atomicAdd(d_p.out_degrees + w, 1);
+					// }
+				// }
 			}
 		}
 	}
@@ -151,15 +157,15 @@ __global__ void process(device_pointers d_p, unsigned k, unsigned level, unsigne
 
 	// error correction?? because we might've incremented or decremented after setting something to level (we use core)
 	//	maybe this part "overfits"? like it fixes issues that are inherent to the algo, but sometimes when the algo goes real wrong it cant fix it
-	unsigned global_threadIdx = blockIdx.x * blockDim.x + threadIdx.x;
-	for (unsigned base = 0; base < V; base += THREAD_COUNT) {
-		vertex v = base + global_threadIdx;
-
-		if (v >= V) continue;
-
-		if (visited[v] && core[v] == level)
-			d_p.out_degrees[v] = level;
-	}
+	// unsigned global_threadIdx = blockIdx.x * blockDim.x + threadIdx.x;
+	// for (unsigned base = 0; base < V; base += THREAD_COUNT) {
+	// 	vertex v = base + global_threadIdx;
+	//
+	// 	if (v >= V) continue;
+	//
+	// 	if (visited[v] && core[v] == level)
+	// 		d_p.out_degrees[v] = level;
+	// }
 }
 
 void moveGraphToGPU(Graph& g, device_pointers& d_p) {
@@ -182,9 +188,9 @@ void refreshGraphOnGPU(Graph& g, device_pointers& d_p) {
 	cudaMemcpy(d_p.out_degrees, g.out_degrees, g.V * sizeof(offset), cudaMemcpyHostToDevice);
 }
 
-degree* getResultFromGPU(device_pointers& d_p, unsigned size) {
+degree* getResultFromGPU(degree* core, unsigned size) {
 	auto res = new degree[size];
-	cudaMemcpy(res, d_p.out_degrees, size * sizeof(degree), cudaMemcpyDeviceToHost);
+	cudaMemcpy(res, core, size * sizeof(degree), cudaMemcpyDeviceToHost);
 
 	return res;
 }
@@ -202,13 +208,13 @@ void dcore(Graph &g) {
 	unsigned* bufferTails = nullptr;
 	unsigned* global_count;
 	unsigned* visited = nullptr;
-	int* core = nullptr;
+	degree* core = nullptr;
 
 	cudaMalloc(&buffers, BUFFER_SIZE * BLOCK_NUMS * sizeof(unsigned));
 	cudaMalloc(&bufferTails, BLOCK_NUMS * sizeof(unsigned));
 	cudaMalloc(&global_count, sizeof(unsigned));
 	cudaMalloc(&visited, g.V * sizeof(unsigned));
-	cudaMalloc(&core, g.V * sizeof(int));
+	cudaMalloc(&core, g.V * sizeof(degree));
 
 	// moving to GPU
 	device_pointers d_p;
@@ -226,6 +232,10 @@ void dcore(Graph &g) {
 	swap(d_p.in_degrees, d_p.out_degrees);
 	swap(d_p.in_neighbors, d_p.out_neighbors);
 	swap(d_p.in_neighbors_offset, d_p.out_neighbors_offset);
+
+	cudaMemset(global_count, 0, sizeof(unsigned));
+	cudaMemset(visited, 0, g.V * sizeof(unsigned));
+	cudaMemset(core, -1, g.V * sizeof(degree));
 
 	while (count < g.V) {
 		cudaMemset(bufferTails, 0, BLOCK_NUMS * sizeof(unsigned));
@@ -259,7 +269,7 @@ void dcore(Graph &g) {
 
 		cudaMemset(global_count, 0, sizeof(unsigned));
 		cudaMemset(visited, 0, g.V * sizeof(unsigned));
-		cudaMemset(core, -1, g.V * sizeof(int));
+		cudaMemset(core, -1, g.V * sizeof(degree));
 
 		if (debug) cout << "D-core Computation Started for k=" << k << endl;
 
@@ -281,7 +291,7 @@ void dcore(Graph &g) {
 		auto end = chrono::steady_clock::now();
 		if (debug) cout << "D-core done, it took " << chrono::duration_cast<chrono::milliseconds>(end - start).count() << "ms" << endl;
 
-		auto r = getResultFromGPU(d_p, g.V);
+		auto r = getResultFromGPU(core, g.V);
 
 		res.push_back(r);
 	}

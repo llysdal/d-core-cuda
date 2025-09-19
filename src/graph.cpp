@@ -80,15 +80,15 @@ void Graph::readFile(const string& inputFile) {
 	out_neighbors = new vertex[E_OUT];
 
 	#pragma omp parallel for
-	for (unsigned v = 0; v < V; v++) {
+	for (vertex v = 0; v < V; v++) {
 		auto it = inEdges[v].begin();
-		for (unsigned j = in_neighbors_offset[v]; j < in_neighbors_offset[v+1]; j++, it++)
+		for (offset j = in_neighbors_offset[v]; j < in_neighbors_offset[v+1]; j++, it++)
 			in_neighbors[j] = *it;
 	}
 	#pragma omp parallel for
-	for (unsigned v = 0; v < V; v++) {
+	for (vertex v = 0; v < V; v++) {
 		auto it = outEdges[v].begin();
-		for (unsigned j = out_neighbors_offset[v]; j < out_neighbors_offset[v+1]; j++, it++)
+		for (offset j = out_neighbors_offset[v]; j < out_neighbors_offset[v+1]; j++, it++)
 			out_neighbors[j] = *it;
 	}
 

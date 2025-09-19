@@ -17,13 +17,17 @@
 
 #define BUFFER_SIZE		1'000'000
 
+typedef int degree;
+typedef unsigned vertex;
+typedef unsigned offset;
+
 typedef struct device_pointers {
-	unsigned* in_neighbors;
-	unsigned* out_neighbors;
-	unsigned* in_neighbors_offset;
-	unsigned* out_neighbors_offset;
-	unsigned* in_degrees;
-	unsigned* out_degrees;
+	vertex* in_neighbors;
+	vertex* out_neighbors;
+	offset* in_neighbors_offset;
+	offset* out_neighbors_offset;
+	degree* in_degrees;
+	degree* out_degrees;
 } device_pointers;
 
 // inline void swap(unsigned& a, unsigned& b) {

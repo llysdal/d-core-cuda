@@ -1,14 +1,11 @@
 #ifndef CUDA_PLAYGROUND_GRAPH_H
 #define CUDA_PLAYGROUND_GRAPH_H
 
-#include "./common.h"
+#include "common.h"
 #include <string>
 
 using namespace std;
 
-typedef unsigned vertex;
-typedef unsigned offset;
-typedef unsigned degree;
 
 class Graph {
 public:
