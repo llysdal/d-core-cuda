@@ -31,11 +31,11 @@ typedef struct device_graph_pointers {
 } device_graph_pointers;
 
 typedef struct device_accessory_pointers {
-	unsigned* buffers;		// each block has a buffer of size BUFFER_SIZE
-	unsigned* bufferTails;	// each block has a buffer tail for keeping track of where to write
-	unsigned* global_count;	// this is the total amount of processed vertices across all blocks
-	unsigned* visited ;		// the set of processed nodes - we only process each node once
-	degree* core;			// the resulting l-values (?) to form the k-list
+	vertex*		buffers;		// each block has a buffer of size BUFFER_SIZE
+	unsigned*	bufferTails;	// each block has a buffer tail for keeping track of where to write
+	unsigned*	global_count;	// this is the total amount of processed vertices across all blocks
+	unsigned*	visited ;		// the set of processed nodes - we only process each node once
+	degree*		core;			// the resulting l-values (?) to form the k-list
 } device_accessory_pointers;
 
 inline void swapInOut(device_graph_pointers& d_p) {

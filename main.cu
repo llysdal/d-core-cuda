@@ -66,38 +66,36 @@ __global__ void scan(device_graph_pointers g_p, device_accessory_pointers a_p, u
  *	This kind of wrecks the out degrees in the graph, but it doesn't matter as we ensure that the core array reflects the true out degrees
  */
 __global__ void process(device_graph_pointers g_p, device_accessory_pointers a_p, unsigned k, unsigned level) {
-	__shared__ unsigned bufferTail;
 	__shared__ vertex* buffer;
+	__shared__ unsigned bufferTail;
 	__shared__ unsigned base;
-	unsigned regTail;
-	unsigned i;
+	unsigned vertexIdx;
 
 	if (IS_MAIN_THREAD) {
 		base = 0;
 
 		bufferTail = a_p.bufferTails[blockIdx.x];
 		buffer = a_p.buffers + blockIdx.x * BUFFER_SIZE;
-		assert(buffer != nullptr);
 	}
 
 	__syncthreads();
 
 	while (true) {
 		__syncthreads();
-		if (base == bufferTail) break;	// every thread exit at the same iteration
-		i = base + WARP_ID;
-		regTail = bufferTail;
+		if (base == bufferTail) break;	// no new vertices were added in the last iterations,  we're done
+		vertexIdx = base + WARP_ID;
 		__syncthreads();
-
-		if (i >= regTail) continue; // this warp won't have to do anything
 
 		if (IS_MAIN_THREAD) {
 			base += WARPS_EACH_BLOCK;
-			if (regTail < base)
-				base = regTail;
+			if (bufferTail < base)
+				// we overshot the buffer tail, let's rewind to make sure we catch the new buffer items
+				base = bufferTail;
 		}
 
-		vertex v = readVertexFromBuffer(buffer, i);
+		if (vertexIdx >= bufferTail) continue;
+
+		vertex v = readVertexFromBuffer(buffer, vertexIdx);
 		offset inStart	= g_p.in_neighbors_offset[v];
 		offset inEnd	= g_p.in_neighbors_offset[v + 1];
 		offset outStart	= g_p.out_neighbors_offset[v];
@@ -168,8 +166,6 @@ void refreshGraphOnGPU(Graph& g, device_graph_pointers& g_p) {
 }
 
 pair<degree, vector<degree>> KList(Graph& g, device_graph_pointers& g_p, device_accessory_pointers& a_p, unsigned k) {
-	degree lmax = 0;
-
 	unsigned level = 0;
 	unsigned count = 0;
 
@@ -193,7 +189,7 @@ pair<degree, vector<degree>> KList(Graph& g, device_graph_pointers& g_p, device_
 	vector<degree> res(g.V);
 	cudaMemcpy(res.data(), a_p.core, g.V * sizeof(degree), cudaMemcpyDeviceToHost);
 
-	return {max(lmax, level - 1), res};
+	return {level - 1, res};
 }
 
 
@@ -245,6 +241,38 @@ vector<vector<degree>> dcore(Graph &g) {
 	return res;
 }
 
+bool compareDCoreResults(const string& first, const string& second) {
+	auto startCompare = chrono::steady_clock::now();
+	string result = "equal";
+	ifstream f1(first, ios::binary|ios::ate);
+	ifstream f2(second, ios::binary|ios::ate);
+
+	if (f1.fail() || f2.fail()) {
+		result = "file problem";
+		auto endCompare = chrono::steady_clock::now();
+		cout << "D-core results compared\t\t" << chrono::duration_cast<chrono::milliseconds>(endCompare - startCompare).count() << "ms" << endl;
+		cout << "\t" << result << endl;
+		return false;
+	}
+	if (f1.tellg() != f2.tellg()) {
+		result = "size mismatch";
+		auto endCompare = chrono::steady_clock::now();
+		cout << "D-core results compared\t\t" << chrono::duration_cast<chrono::milliseconds>(endCompare - startCompare).count() << "ms" << endl;
+		cout << "\t" << result << endl;
+		return false;
+	}
+
+	f1.seekg(0, ios::beg);
+	f2.seekg(0, ios::beg);
+	if (!equal(istreambuf_iterator<char>(f1.rdbuf()), istreambuf_iterator<char>(), istreambuf_iterator<char>(f2.rdbuf())))
+		result = "not equal";
+
+	auto endCompare = chrono::steady_clock::now();
+	cout << "D-core results compared\t\t" << chrono::duration_cast<chrono::milliseconds>(endCompare - startCompare).count() << "ms" << endl;
+	cout << "\t" << result << endl;
+	return result == "equal";
+}
+
 void writeDCoreResults(vector<vector<degree>>& values, const string& outputFile) {
 	auto startWrite = chrono::steady_clock::now();
 	ofstream bin;
@@ -277,7 +305,8 @@ void writeDCoreResultsText(vector<vector<degree>>& values, const string& outputF
 
 
 int main(int argc, char *argv[]) {
-	const string filename = "../dataset/wiki_vote";
+	// const string filename = "../dataset/wiki_vote";
+	const string filename = "../dataset/amazon0601";
 
 	auto start = chrono::steady_clock::now();
 
@@ -287,6 +316,8 @@ int main(int argc, char *argv[]) {
 	auto res = dcore(g);
 	// writeDCoreResultsText(res, "../results/cudares", 16);
 	writeDCoreResults(res, "../results/cudares");
+	// compareDCoreResults("../results/cudares", "../results/wiki_vote");
+	compareDCoreResults("../results/cudares", "../results/amazon0601");
 
 	auto end = chrono::steady_clock::now();
 	cout << "Total time: " << chrono::duration_cast<chrono::milliseconds>(end - start).count() << "ms" << endl;
