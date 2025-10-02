@@ -118,7 +118,7 @@ __global__ void process(device_graph_pointers g_p, device_accessory_pointers a_p
 			if (o + LANE_ID >= inEnd) continue;
 
 			vertex w = g_p.in_neighbors[o + LANE_ID];
-			degree w_out_degree = atomicSub(g_p.out_degrees + w, 1);
+			degree w_out_degree = atomicSub(g_p.out_degrees + w, 1);	// this returns previous value
 
 			if (w_out_degree == (level + 1) && atomicTestAndSet(&a_p.visited[w])) {
 				unsigned loc = atomicAdd(&bufferTail, 1);
@@ -134,7 +134,7 @@ __global__ void process(device_graph_pointers g_p, device_accessory_pointers a_p
 	}
 }
 
-void allocateDeviceAccesoryMemory(Graph& g, device_accessory_pointers& a_p) {
+void allocateDeviceAccessoryMemory(Graph& g, device_accessory_pointers& a_p) {
 	cudaMalloc(&(a_p.buffers), BUFFER_SIZE * BLOCK_NUMS * sizeof(vertex));
 	cudaMalloc(&(a_p.bufferTails), BLOCK_NUMS * sizeof(unsigned));
 	cudaMalloc(&(a_p.global_count), sizeof(unsigned));
@@ -200,7 +200,7 @@ vector<vector<degree>> dcore(Graph &g) {
 
 	// alloc all the memory we need
 	device_accessory_pointers a_p;
-	allocateDeviceAccesoryMemory(g, a_p);
+	allocateDeviceAccessoryMemory(g, a_p);
 	device_graph_pointers g_p;
 	allocateDeviceGraphMemory(g, g_p);
 
@@ -213,13 +213,14 @@ vector<vector<degree>> dcore(Graph &g) {
 // ***** calculating k-max *****
 	auto startKmax = chrono::steady_clock::now();
 	swapInOut(g_p); // do a flip!! (we're calculating the 0 l-list)
-	auto [kmax, _] = KList(g, g_p, a_p, 0);
+	auto [kmax, kmaxes] = KList(g, g_p, a_p, 0);
 	swapInOut(g_p); // let's fix the mess we made...
 
 	auto endKmax = chrono::steady_clock::now();
 	cout << "D-core k-max done\t\t" << chrono::duration_cast<chrono::milliseconds>(endKmax - startKmax).count() << "ms" << endl;
 	cout << "\tkmax: " << kmax << endl;
-
+	g.kmax = kmax;
+	g.kmaxes = kmaxes;
 
 // ***** time to do the d-core decomposition *****
 	auto startDecomp = chrono::steady_clock::now();
@@ -235,6 +236,8 @@ vector<vector<degree>> dcore(Graph &g) {
 
 	auto endDecomp = chrono::steady_clock::now();
 	cout << "D-core decomp done\t\t" << chrono::duration_cast<chrono::milliseconds>(endDecomp - startDecomp).count() << "ms" << endl;
+	g.lmax = lmax;
+	g.lmaxes = res;
 
 	cout << "\tlmax: " << lmax << endl;
 
@@ -304,9 +307,167 @@ void writeDCoreResultsText(vector<vector<degree>>& values, const string& outputF
 }
 
 
+uint32_t cal_hIndex(const vector<uint32_t> &input_vector){
+	int n = input_vector.size();
+	vector <int> bucket(n + 1);
+	for(int i = 0; i < n; i++){
+		int x = input_vector[i];
+		if(x >= n){
+			bucket[n]++;
+		} else {
+			bucket[x]++;
+		}
+	}
+	int cnt = 0;
+	for(int i = n; i >= 0; i--){
+		cnt += bucket[i];
+		if(cnt >= i)return i;
+	} return -1;
+}
+
+void maintainKList(Graph& g, vector<pair<vertex, vertex>> modifiedEdges, degree M_) {
+	const unsigned n_ = g.V;
+	// const uint32_t M_ = 1;
+	const int lmax_number_of_threads = 1;
+
+	typedef struct {
+		uint32_t vid;
+		uint32_t eid;
+	} ArrayEntry;
+
+	auto& edges_ = g.edges;
+	auto& k_max = g.kmaxes;
+	auto& l_max = g.lmaxes;
+
+	//using parallel-h-index based method to update the l_{max} value
+	//std::chrono::duration<double> initialzation, find_outcore, h_index_computation;
+	double initialzation = 0, find_outcore = 0, h_index_computation = 0;
+	for(uint32_t k = 0 ; k <= M_ + 1; ++k){
+		// cout << "one loop " << k << endl;
+	    auto test1 = omp_get_wtime();
+	    vector<vector<ArrayEntry>> k_adj_in(n_), k_adj_out(n_);
+	    vector<uint32_t> mED_out(n_, 0), mPED_out(n_, 0);
+	    vector<bool> is_in_subgraph (n_, false);   //wether the vertex is in the current (k,0)-core
+	    vector<uint32_t> sub_out_coreness(n_, 0);  //the l_{max} value of vertices in the current (k,0)-core
+	    for (uint32_t eid = 0; eid < edges_.size(); ++eid) {
+	        const uint32_t v1 = edges_[eid].first;
+	        const uint32_t v2 = edges_[eid].second;
+	        if(k_max[v1] >= k && k_max[v2] >= k){
+	            k_adj_in[v2].push_back({v1, eid});
+	            k_adj_out[v1].push_back({v2, eid});
+	            if(l_max[k][v2] >= l_max[k][v1]){
+	                ++mED_out[v1];
+	            }
+	        }
+	    }
+
+	    /*calculate PED value of vertices*/
+	    #pragma omp parallel for num_threads(lmax_number_of_threads)
+	    for (uint32_t vid = 0; vid < n_; ++vid) {
+	        if(!k_adj_out.empty()){
+	            mPED_out[vid] = mED_out[vid];
+	            for (auto neighbors: k_adj_out[vid]) {
+	                if(l_max[k][neighbors.vid] == l_max[k][vid] && mED_out[neighbors.vid] > l_max[k][vid]){
+	                    --mPED_out[vid];
+	                }
+	            }
+	        }
+	    }
+
+		// cout << M_ << endl;
+		//
+		// for (auto kmax: k_max)
+		// 	cout << kmax << " ";
+		// cout << endl;
+		//
+		// for (auto v: mED_out)
+		// 	cout << v << " ";
+		// cout << endl;
+		// for (auto v: mPED_out)
+		// 	cout << v << " ";
+		// cout << endl;
+
+	    auto test2 = omp_get_wtime();
+
+	    vector<bool> compute(n_, false);  //needs to be computed
+	    vector<bool> be_in_outcore(n_, false);
+	    /*find out-core of inserted edges*/
+
+
+	    #pragma omp parallel for num_threads(lmax_number_of_threads)
+	    for(auto & edge : modifiedEdges){
+	    	cout << "edge " << edge.first << " " << edge.second << endl;
+	        if(k_max[edge.first] >= k && k_max[edge.second] >= k){
+	            uint32_t root = edge.first;
+	            if (l_max[k][edge.second] < l_max[k][edge.first]) {
+	                root = edge.second;
+	            }
+	        	cout << "root " << root << endl;
+	            uint32_t k_M_ = l_max[k][root];
+	        	cout << "k_M_ " << k_M_ << endl;
+	            for(uint32_t vid = 0; vid < n_; ++vid){
+	                if(k_max[vid] >= k && l_max[k][vid] == k_M_ && mPED_out[vid] > l_max[k][vid]){
+	                    compute[vid] = true;
+	                    l_max[k][vid] = k_adj_out[vid].size();
+	                	cout << "f " << vid << " " << l_max[k][vid] << endl;
+	                }
+	            }
+	        }
+	    }
+	    auto test3 = omp_get_wtime();
+
+
+	    bool flag = true;
+	    uint32_t round_cnt = 0;
+	    while (flag){
+	    	cout << "round_cnt " << round_cnt << endl;
+	        flag = false;
+	        #pragma omp parallel for num_threads(lmax_number_of_threads)
+	        for(uint32_t vid = 0; vid < n_; ++vid){
+	            if(compute[vid]){
+	                vector<uint32_t> tmp_neighbor_out_coreness(k_adj_out[vid].size(), 0);
+	                for(uint32_t i = 0; i < k_adj_out[vid].size(); ++i){
+	                    if(l_max[k][k_adj_out[vid][i].vid] >= l_max[k][vid]){
+	                        tmp_neighbor_out_coreness[i] = l_max[k][k_adj_out[vid][i].vid];
+	                    }
+	                }
+	                uint32_t tmp_h_index = cal_hIndex(tmp_neighbor_out_coreness);
+	                if(tmp_h_index < l_max[k][vid]){
+	                    l_max[k][vid] = tmp_h_index;
+	                    flag = true;
+	                	cout << "s " << vid << " " << l_max[k][vid] << endl;
+	                }
+	            }
+	        }
+	        round_cnt++;
+	    }
+
+	    const auto test4 = omp_get_wtime();
+	    initialzation += test2-test1;
+	    find_outcore += test3-test2;
+	    h_index_computation += test4-test3;
+	}
+
+	printf("Insertion lmax initilization %f ms; find out-core costs %f ms; h-index computation costs %f ms \n",
+	       initialzation*1000,
+	       find_outcore*1000,
+	       h_index_computation*1000);
+
+	long long width = to_string(10).length();
+	ofstream outfile ("../results/maintain.txt",ios::out|ios::binary|ios::trunc);
+	for (auto r: l_max) {
+		for (auto v: r) {
+			outfile << setw(width);
+			outfile << v << " ";
+		}
+		outfile << "\r\n";
+	}
+}
+
+
 int main(int argc, char *argv[]) {
 	// const string filename = "../dataset/wiki_vote";
-	const string filename = "../dataset/amazon0601";
+	const string filename = "../dataset/digraph2";
 
 	auto start = chrono::steady_clock::now();
 
@@ -314,10 +475,26 @@ int main(int argc, char *argv[]) {
     cout << "> " << filename  << " V: " << g.V << " E: " << g.E << endl;
 
 	auto res = dcore(g);
-	// writeDCoreResultsText(res, "../results/cudares", 16);
-	writeDCoreResults(res, "../results/cudares");
+	writeDCoreResultsText(res, "../results/cudares.txt", 16);
+	// writeDCoreResults(res, "../results/cudares");
 	// compareDCoreResults("../results/cudares", "../results/wiki_vote");
-	compareDCoreResults("../results/cudares", "../results/amazon0601");
+	// compareDCoreResults("../results/cudares", "../results/amazon0601");
+
+
+	vector<pair<vertex, vertex>> newEdges = {{3,0}};
+	g.edges.push_back(newEdges[0]);
+
+	auto M = min(g.kmaxes[newEdges[0].first], g.kmaxes[newEdges[0].second]);
+
+	g.kmaxes[0] = 2;
+	g.kmaxes[3] = 2;
+
+	// for (auto kmax: g.kmaxes)
+	// 	cout << kmax << " ";
+	// cout << endl;
+	//
+	// cout << M << endl;
+	maintainKList(g, newEdges, M);
 
 	auto end = chrono::steady_clock::now();
 	cout << "Total time: " << chrono::duration_cast<chrono::milliseconds>(end - start).count() << "ms" << endl;

@@ -29,7 +29,7 @@ void Graph::readFile(const string& inputFile) {
 
 	// all the next are edges
 	vertex s,t;
-	auto edges = vector<pair<vertex, vertex>>();
+	edges = vector<pair<vertex, vertex>>();
 
 	while (getline(infile, line)) {
 		istringstream iss(line);
@@ -151,7 +151,7 @@ bool Graph::readBinary(const string& inputFile) {
 }
 
 Graph::Graph(const string& inputFile){
-	if (readBinary(inputFile)) return;
+	// if (readBinary(inputFile)) return;
 
     cout << "Graph reading file..." << endl;
     auto start = chrono::steady_clock::now();
@@ -159,7 +159,7 @@ Graph::Graph(const string& inputFile){
     auto end = chrono::steady_clock::now();
     cout << "Graph file loaded\t\t" << chrono::duration_cast<chrono::milliseconds>(end - start).count() << "ms" << endl;
 
-	writeBinary(inputFile);
+	// writeBinary(inputFile);
 }
 
 Graph::~Graph() {
