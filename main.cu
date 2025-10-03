@@ -322,7 +322,8 @@ uint32_t cal_hIndex(const vector<uint32_t> &input_vector){
 	for(int i = n; i >= 0; i--){
 		cnt += bucket[i];
 		if(cnt >= i)return i;
-	} return -1;
+	}
+	return -1;
 }
 
 void maintainKList(Graph& g, vector<pair<vertex, vertex>> modifiedEdges, degree M_) {
@@ -409,7 +410,7 @@ void maintainKList(Graph& g, vector<pair<vertex, vertex>> modifiedEdges, degree 
 	                if(k_max[vid] >= k && l_max[k][vid] == k_M_ && mPED_out[vid] > l_max[k][vid]){
 	                    compute[vid] = true;
 	                    l_max[k][vid] = k_adj_out[vid].size();
-	                	cout << "f " << vid << " " << l_max[k][vid] << endl;
+	                	cout << "f " << k << "," << vid << " " << l_max[k][vid] << endl;
 	                }
 	            }
 	        }
@@ -435,7 +436,7 @@ void maintainKList(Graph& g, vector<pair<vertex, vertex>> modifiedEdges, degree 
 	                if(tmp_h_index < l_max[k][vid]){
 	                    l_max[k][vid] = tmp_h_index;
 	                    flag = true;
-	                	cout << "s " << vid << " " << l_max[k][vid] << endl;
+	                	cout << "s " << k << "," << vid << " " << l_max[k][vid] << endl;
 	                }
 	            }
 	        }
@@ -480,20 +481,23 @@ int main(int argc, char *argv[]) {
 	// compareDCoreResults("../results/cudares", "../results/wiki_vote");
 	// compareDCoreResults("../results/cudares", "../results/amazon0601");
 
+	// return 0;
 
-	vector<pair<vertex, vertex>> newEdges = {{3,0}};
+	vector<pair<vertex, vertex>> newEdges = {{1,0}};
+	// vector<pair<vertex, vertex>> newEdges = {};
 	g.edges.push_back(newEdges[0]);
 
+	// auto M = 0;
 	auto M = min(g.kmaxes[newEdges[0].first], g.kmaxes[newEdges[0].second]);
 
 	g.kmaxes[0] = 2;
 	g.kmaxes[3] = 2;
 
-	// for (auto kmax: g.kmaxes)
-	// 	cout << kmax << " ";
-	// cout << endl;
+	for (auto kmax: g.kmaxes)
+		cout << kmax << " ";
+	cout << endl;
 	//
-	// cout << M << endl;
+	cout << M << endl;
 	maintainKList(g, newEdges, M);
 
 	auto end = chrono::steady_clock::now();
