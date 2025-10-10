@@ -14,6 +14,51 @@ Graph::Graph() {
 	// default constructor
 }
 
+void Graph::insertEdge(pair<vertex, vertex> edge) {
+	edges.emplace_back(edge.first, edge.second);
+
+	E = edges.size();
+
+	// todo: optimize
+	auto inEdges = vector<vector<vertex>>(V);
+	auto outEdges = vector<vector<vertex>>(V);
+	for (auto &[first, second] : edges) {
+		outEdges[first].push_back(second);
+		inEdges[second].push_back(first);
+	}
+
+	in_degrees = new degree[V];
+	out_degrees = new degree[V];
+	for (int i=0; i<V; i++) {
+		in_degrees[i] = inEdges[i].size();
+		out_degrees[i] = outEdges[i].size();
+	}
+
+	in_neighbors_offset = new offset[V+1];
+	in_neighbors_offset[0] = 0;
+	partial_sum(in_degrees, in_degrees+V, in_neighbors_offset+1);
+	out_neighbors_offset = new offset[V+1];
+	out_neighbors_offset[0] = 0;
+	partial_sum(out_degrees, out_degrees+V, out_neighbors_offset+1);
+
+	in_neighbors = new vertex[E];
+	out_neighbors = new vertex[E];
+
+	#pragma omp parallel for
+	for (vertex v = 0; v < V; v++) {
+		auto it = inEdges[v].begin();
+		for (offset j = in_neighbors_offset[v]; j < in_neighbors_offset[v+1]; j++, it++)
+			in_neighbors[j] = *it;
+	}
+
+	#pragma omp parallel for
+	for (vertex v = 0; v < V; v++) {
+		auto it = outEdges[v].begin();
+		for (offset j = out_neighbors_offset[v]; j < out_neighbors_offset[v+1]; j++, it++)
+			out_neighbors[j] = *it;
+	}
+}
+
 void Graph::readFile(const string& inputFile) {
     ifstream infile;
     infile.open(inputFile);

@@ -34,9 +34,19 @@ typedef struct device_accessory_pointers {
 	vertex*		buffers;		// each block has a buffer of size BUFFER_SIZE
 	unsigned*	bufferTails;	// each block has a buffer tail for keeping track of where to write
 	unsigned*	global_count;	// this is the total amount of processed vertices across all blocks
-	unsigned*	visited ;		// the set of processed nodes - we only process each node once
+	unsigned*	visited;		// the set of processed nodes - we only process each node once
 	degree*		core;			// the resulting l-values (?) to form the k-list
 } device_accessory_pointers;
+
+typedef struct device_maintenance_pointers {
+	degree*		k_max;
+	degree*		original_k_max;
+	unsigned*	compute;
+	degree*		ED;
+	degree*		PED;
+	unsigned*	tmp_neighbor_in_coreness;
+	unsigned*	hIndex_buckets;
+} device_maintenance_pointers;
 
 inline void swapInOut(device_graph_pointers& d_p) {
 	// this is an easy way to turn our KList function into an LList function!
