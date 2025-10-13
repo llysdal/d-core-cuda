@@ -14,7 +14,15 @@ Graph::Graph() {
 	// default constructor
 }
 
+
 void Graph::insertEdge(pair<vertex, vertex> edge) {
+	delete[] in_neighbors;
+	delete[] out_neighbors;
+	delete[] in_neighbors_offset;
+	delete[] out_neighbors_offset;
+	delete[] in_degrees;
+	delete[] out_degrees;
+
 	edges.emplace_back(edge.first, edge.second);
 
 	E = edges.size();
@@ -205,6 +213,19 @@ Graph::Graph(const string& inputFile){
     cout << "Graph file loaded\t\t" << chrono::duration_cast<chrono::milliseconds>(end - start).count() << "ms" << endl;
 
 	// writeBinary(inputFile);
+}
+
+Graph::Graph(unsigned vertexAmount) {
+	V = vertexAmount;
+	E = 0;
+	edges = vector<pair<vertex, vertex>>();
+	kmaxes = vector<degree>(V);
+	in_degrees = new degree[V];
+	out_degrees = new degree[V];
+	in_neighbors_offset = new offset[V+1];
+	out_neighbors_offset = new offset[V+1];
+	in_neighbors = new vertex[E];
+	out_neighbors = new vertex[E];
 }
 
 Graph::~Graph() {

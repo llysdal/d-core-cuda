@@ -25,6 +25,7 @@ public:
 	vector<vector<degree>> lmaxes;
 	Graph();
 	explicit Graph(const string& inputFile);
+	explicit Graph(unsigned V);
 	void insertEdge(pair<vertex, vertex> edge);
 	void readFile(const string& inputFile);
 	void writeBinary(const string& inputFile);

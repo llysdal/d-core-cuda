@@ -40,12 +40,14 @@ typedef struct device_accessory_pointers {
 
 typedef struct device_maintenance_pointers {
 	degree*		k_max;
+	degree*		new_k_max;
 	degree*		original_k_max;
 	unsigned*	compute;
 	degree*		ED;
 	degree*		PED;
-	unsigned*	tmp_neighbor_in_coreness;
-	unsigned*	hIndex_buckets;
+	bool*		flag;
+	degree*		tmp_neighbor_in_coreness;
+	degree*		hIndex_buckets;
 } device_maintenance_pointers;
 
 inline void swapInOut(device_graph_pointers& d_p) {
