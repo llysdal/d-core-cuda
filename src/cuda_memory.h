@@ -41,22 +41,28 @@ void deallocateDeviceAccessoryMemory(device_accessory_pointers a_p) {
 void allocateDeviceMaintenanceMemory(Graph& g, device_maintenance_pointers& m_p) {
 	cudaMalloc(&(m_p.k_max), g.V * sizeof(degree));
 	cudaMalloc(&(m_p.original_k_max), g.V * sizeof(degree));
+	cudaMalloc(&(m_p.l_max), g.V * sizeof(degree));
+	cudaMalloc(&(m_p.original_l_max), g.V * sizeof(degree));
+	cudaMalloc(&(m_p.new_l_max), g.V * sizeof(degree));
 	cudaMalloc(&(m_p.compute), g.V * sizeof(unsigned));
 	cudaMalloc(&(m_p.ED), g.V * sizeof(degree));
 	cudaMalloc(&(m_p.PED), g.V * sizeof(degree));
 	cudaMalloc(&(m_p.flag), sizeof(bool));
-	cudaMalloc(&(m_p.tmp_neighbor_in_coreness), g.E * sizeof(degree));
+	cudaMalloc(&(m_p.tmp_neighbor_coreness), g.E * sizeof(degree));
 	cudaMalloc(&(m_p.hIndex_buckets), (g.V + g.E) * sizeof(degree));
 }
 
 void deallocateDeviceMaintenanceMemory(device_maintenance_pointers& m_p) {
 	cudaFree(m_p.k_max);
 	cudaFree(m_p.original_k_max);
+	cudaFree(m_p.l_max);
+	cudaFree(m_p.original_l_max);
+	cudaFree(m_p.new_l_max);
 	cudaFree(m_p.compute);
 	cudaFree(m_p.ED);
 	cudaFree(m_p.PED);
 	cudaFree(m_p.flag);
-	cudaFree(m_p.tmp_neighbor_in_coreness);
+	cudaFree(m_p.tmp_neighbor_coreness);
 	cudaFree(m_p.hIndex_buckets);
 }
 

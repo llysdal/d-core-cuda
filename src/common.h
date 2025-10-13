@@ -41,11 +41,14 @@ typedef struct device_accessory_pointers {
 typedef struct device_maintenance_pointers {
 	degree*		k_max;
 	degree*		original_k_max;
+	degree*		l_max;
+	degree*		original_l_max;
+	degree*		new_l_max;
 	unsigned*	compute;
 	degree*		ED;
 	degree*		PED;
 	bool*		flag;
-	degree*		tmp_neighbor_in_coreness;
+	degree*		tmp_neighbor_coreness;
 	degree*		hIndex_buckets;
 } device_maintenance_pointers;
 

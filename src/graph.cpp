@@ -220,6 +220,8 @@ Graph::Graph(unsigned vertexAmount) {
 	E = 0;
 	edges = vector<pair<vertex, vertex>>();
 	kmaxes = vector<degree>(V);
+	lmaxes = vector<vector<degree>>();
+	lmaxes.emplace_back(vector<degree>(V));
 	in_degrees = new degree[V];
 	out_degrees = new degree[V];
 	in_neighbors_offset = new offset[V+1];
