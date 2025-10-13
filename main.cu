@@ -10,6 +10,7 @@
 #include "common.h"
 #include "common.cuh"
 #include "graph.h"
+#include "cuda_memory.h"
 
 using namespace std;
 
@@ -134,39 +135,6 @@ __global__ void process(device_graph_pointers g_p, device_accessory_pointers a_p
 	}
 }
 
-void allocateDeviceAccessoryMemory(Graph& g, device_accessory_pointers& a_p) {
-	cudaMalloc(&(a_p.buffers), BUFFER_SIZE * BLOCK_NUMS * sizeof(vertex));
-	cudaMalloc(&(a_p.bufferTails), BLOCK_NUMS * sizeof(unsigned));
-	cudaMalloc(&(a_p.global_count), sizeof(unsigned));
-	cudaMalloc(&(a_p.visited), g.V * sizeof(unsigned));	// unsigned instead of bool since atomicCAS only doesn't do bools
-	cudaMalloc(&(a_p.core), g.V * sizeof(degree));
-}
-
-void deallocateDeviceAccessoryMemory(device_accessory_pointers a_p) {
-	cudaFree(a_p.buffers);
-	cudaFree(a_p.bufferTails);
-	cudaFree(a_p.global_count);
-	cudaFree(a_p.visited);
-	cudaFree(a_p.core);
-}
-
-void allocateDeviceGraphMemory(Graph& g, device_graph_pointers& g_p) {
-	cudaMalloc(&(g_p.in_neighbors), g.E * sizeof(vertex));
-	cudaMalloc(&(g_p.out_neighbors), g.E * sizeof(vertex));
-	cudaMalloc(&(g_p.in_neighbors_offset), (g.V+1) * sizeof(offset));
-	cudaMalloc(&(g_p.out_neighbors_offset), (g.V+1) * sizeof(offset));
-	cudaMalloc(&(g_p.in_degrees), (g.V) * sizeof(degree));
-	cudaMalloc(&(g_p.out_degrees), (g.V) * sizeof(degree));
-}
-
-void deallocateDeviceGraphMemory(device_graph_pointers g_p) {
-	cudaFree(g_p.in_neighbors);
-	cudaFree(g_p.out_neighbors);
-	cudaFree(g_p.in_neighbors_offset);
-	cudaFree(g_p.out_neighbors_offset);
-	cudaFree(g_p.in_degrees);
-	cudaFree(g_p.out_degrees);
-}
 
 void moveGraphToDevice(Graph& g, device_graph_pointers& g_p) {
 	cudaMemcpy(g_p.in_neighbors, g.in_neighbors, g.in_neighbors_offset[g.V] * sizeof(vertex), cudaMemcpyHostToDevice);
@@ -340,28 +308,11 @@ void writeDCoreResultsText(vector<vector<degree>>& values, const string& outputF
  * h_index calculator
  */
 
-void allocateDeviceMaintenanceMemory(Graph& g, device_maintenance_pointers& m_p) {
-	cudaMalloc(&(m_p.k_max), g.V * sizeof(degree));
-	cudaMalloc(&(m_p.original_k_max), g.V * sizeof(degree));
-	cudaMalloc(&(m_p.new_k_max), g.V * sizeof(degree));
-	cudaMalloc(&(m_p.compute), g.V * sizeof(unsigned));
-	cudaMalloc(&(m_p.ED), g.V * sizeof(degree));
-	cudaMalloc(&(m_p.PED), g.V * sizeof(degree));
-	cudaMalloc(&(m_p.flag), sizeof(bool));
-	cudaMalloc(&(m_p.tmp_neighbor_in_coreness), g.E * sizeof(degree));
-	cudaMalloc(&(m_p.hIndex_buckets), (g.V + g.E) * sizeof(degree));
-}
 
 void initializeDeviceMaintenanceMemory(Graph& g, device_maintenance_pointers& m_p, vector<degree>& kmax) {
 	cudaMemcpy(m_p.k_max, kmax.data(), g.V * sizeof(vertex), cudaMemcpyHostToDevice);
-	cudaMemcpy(m_p.new_k_max, kmax.data(), g.V * sizeof(vertex), cudaMemcpyHostToDevice);
 	cudaMemcpy(m_p.original_k_max, kmax.data(), g.V * sizeof(vertex), cudaMemcpyHostToDevice);
 	cudaMemset(m_p.compute, 0, g.V * sizeof(unsigned));
-	// cudaMemset(m_p.tmp_neighbor_in_coreness, 0, g.E * sizeof(unsigned));
-
-	// these shouldnt be needed, for optimization
-	// cudaMemset(m_p.ED, 0, g.V * sizeof(degree));
-	// cudaMemset(m_p.PED, 0, g.V * sizeof(degree));
 }
 
 __global__ void kmaxCalculateEDandPED(device_graph_pointers g_p, device_maintenance_pointers m_p, unsigned V) {
@@ -422,24 +373,21 @@ __global__ void kmaxFindUpperBound(device_graph_pointers g_p, device_maintenance
 	}
 }
 
-__device__ degree hIndex(device_graph_pointers g_p ,device_maintenance_pointers m_p, vertex v) {
-	offset o = g_p.in_neighbors_offset[v];
-	degree n = g_p.in_degrees[v];
-
+__device__ degree hIndex(device_graph_pointers g_p ,device_maintenance_pointers m_p, vertex v, offset o, degree d) {
 	degree bucketStart = o + v;
-	for (unsigned i = 0; i < n + 1; i++)
+	for (unsigned i = 0; i < d + 1; i++)
 		m_p.hIndex_buckets[bucketStart + i] = 0;
 
-	for(unsigned i = 0; i < n; i++){
+	for (unsigned i = 0; i < d; i++) {
 		degree x = m_p.tmp_neighbor_in_coreness[o + i];
-		if(x >= n){
-			m_p.hIndex_buckets[bucketStart + n]++;
+		if (x >= d) {
+			m_p.hIndex_buckets[bucketStart + d]++;
 		} else {
 			m_p.hIndex_buckets[bucketStart + x]++;
 		}
 	}
 	unsigned cnt = 0;
-	for (int i = n; i >= 0; i--){
+	for (int i = d; i >= 0; i--) {
 		cnt += m_p.hIndex_buckets[bucketStart + i];
 		if (cnt >= i) return i;
 	}
@@ -467,7 +415,7 @@ __global__ void kmaxRefineHIndex(device_graph_pointers g_p, device_maintenance_p
 		}
 
 		// calculate h index
-		unsigned tmp_h_index = hIndex(g_p, m_p, v);
+		unsigned tmp_h_index = hIndex(g_p, m_p, v, g_p.in_neighbors_offset[v], g_p.in_degrees[v]);
 		if (tmp_h_index < m_p.k_max[v]) {
 			m_p.k_max[v] = tmp_h_index;
 			*m_p.flag = true;
