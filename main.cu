@@ -115,6 +115,8 @@ __global__ void process(device_graph_pointers g_p, device_accessory_pointers a_p
 			}
 		}
 
+		__syncthreads();
+
 		for (offset o = inStart; o < inEnd; o += WARP_SIZE) {
 			if (o + LANE_ID >= inEnd) continue;
 
@@ -159,42 +161,14 @@ pair<degree, vector<degree>> KList(Graph& g, device_graph_pointers& g_p, device_
 	cudaMemset(a_p.visited, 0, g.V * sizeof(unsigned));
 	cudaMemset(a_p.core, -1, g.V * sizeof(degree));
 
-	cout << "level: " << k << endl;
-
 	// algo time
 	while (count < g.V) {
 		cudaMemset(a_p.bufferTails, 0, BLOCK_NUMS * sizeof(unsigned));
 
 		scan<<<BLOCK_NUMS, BLOCK_DIM>>>(g_p, a_p, k, level, g.V);
-		vector<unsigned> visited(g.V);
-		cudaMemcpy(visited.data(), a_p.visited, g.V * sizeof(unsigned), cudaMemcpyDeviceToHost);
-		cout << "visited_scan: ";
-		for (auto v: visited)
-			cout << v << " ";
-		cout << endl;
-
-		vector<degree> res(g.V);
-		cudaMemcpy(res.data(), a_p.core, g.V * sizeof(degree), cudaMemcpyDeviceToHost);
-		cout << "l_max["<<k<<"]_scan: ";
-		for (auto v: res)
-			cout << v << " ";
-		cout << endl;
-
 		process<<<BLOCK_NUMS, BLOCK_DIM>>>(g_p, a_p, k, level);
-		cudaMemcpy(visited.data(), a_p.visited, g.V * sizeof(unsigned), cudaMemcpyDeviceToHost);
-		cout << "visited_proc: ";
-		for (auto v: visited)
-			cout << v << " ";
-		cout << endl;
-
-		cudaMemcpy(res.data(), a_p.core, g.V * sizeof(degree), cudaMemcpyDeviceToHost);
-		cout << "l_max["<<k<<"]_proc: ";
-		for (auto v: res)
-			cout << v << " ";
-		cout << endl;
 
 		cudaMemcpy(&count, a_p.global_count, sizeof(unsigned), cudaMemcpyDeviceToHost);
-		cout << "global_count: " << count << endl;
 		level++;
 	}
 
@@ -621,7 +595,8 @@ __global__ void kListFindUpperBound(device_graph_pointers g_p, device_maintenanc
 		vertex v = base + global_threadIdx;
 		if (v >= V) continue;
 
-		if (m_p.k_max[v] >= k && m_p.l_max[v] <= root_l_max + 1 && m_p.PED[v] >= m_p.l_max[v]) {
+		// if (m_p.k_max[v] >= k && m_p.l_max[v] <= root_l_max + 1 && m_p.PED[v] >= m_p.l_max[v]) {
+		if (m_p.k_max[v] >= k && m_p.l_max[v] == root_l_max && m_p.PED[v] > m_p.l_max[v]) {
 			m_p.compute[v] = true;
 			// m_p.l_max[v] = g_p.out_degrees[v];
 			// m_p.l_max[v] = k_adj_out[v].size();
@@ -664,7 +639,7 @@ __global__ void kListRefineHIndex(device_graph_pointers g_p, device_maintenance_
 			vertex neighbor = g_p.out_neighbors[o];
 
 			if (m_p.k_max[neighbor] < k) {
-				m_p.tmp_neighbor_coreness[o] = 0;
+				m_p.tmp_neighbor_coreness[o] = 0;	// we need to set the coreness to 0 such that hbuckets work
 				continue;
 			}
 
@@ -696,41 +671,40 @@ void kListMaintenance(Graph& g, device_graph_pointers& g_p, device_maintenance_p
 
 	// cout << "ed" << endl;
 	kListCalculateEDandPED<<<BLOCK_NUMS, BLOCK_DIM>>>(g_p, m_p, g.V, k);
-	// vector<degree> ED(g.V);
-	// vector<degree> PED(g.V);
-	// cudaMemcpy(ED.data(), m_p.ED, g.V * sizeof(degree), cudaMemcpyDeviceToHost);
-	// cudaMemcpy(PED.data(), m_p.PED, g.V * sizeof(degree), cudaMemcpyDeviceToHost);
-	//
-	// cout << " ED: ";
-	// for (auto v: ED)
-	// 	cout << v << " ";
-	// cout << endl;
-	// cout << "PED: ";
-	// for (auto v: PED)
-	// 	cout << v << " ";
-	// cout << endl;
+	vector<degree> ED(g.V);
+	vector<degree> PED(g.V);
+	cudaMemcpy(ED.data(), m_p.ED, g.V * sizeof(degree), cudaMemcpyDeviceToHost);
+	cudaMemcpy(PED.data(), m_p.PED, g.V * sizeof(degree), cudaMemcpyDeviceToHost);
 
-	// cout << "upper" << endl;
-	// if (g.kmaxes[insertedEdge.first] >= k || g.kmaxes[insertedEdge.second] >= k) {
-	// 	vertex root = insertedEdge.first;
-	// 	if (g.lmaxes[k][insertedEdge.second] < g.lmaxes[k][insertedEdge.first])
-	// 		root = insertedEdge.second;
-	// 	cout << "root_l_max " << g.lmaxes[k][root] << endl;
-	// }
+	cout << " ED: ";
+	for (auto v: ED)
+		cout << v << " ";
+	cout << endl;
+	cout << "PED: ";
+	for (auto v: PED)
+		cout << v << " ";
+	cout << endl;
+
+	if (g.kmaxes[insertedEdge.first] >= k || g.kmaxes[insertedEdge.second] >= k) {
+		vertex root = insertedEdge.first;
+		if (g.lmaxes[k][insertedEdge.second] < g.lmaxes[k][insertedEdge.first])
+			root = insertedEdge.second;
+		cout << "root_l_max " << g.lmaxes[k][root] << endl;
+	}
 	kListFindUpperBound<<<BLOCK_NUMS, BLOCK_DIM>>>(g_p, m_p, g.V, k, insertedEdge.first, insertedEdge.second);
 
-	// vector<degree> upper(g.V);
-	// cudaMemcpy(upper.data(), m_p.l_max, g.V * sizeof(degree), cudaMemcpyDeviceToHost);
-	// cout << "lmax_upper: ";
-	// for (auto v: upper)
-	// 	cout << v << " ";
-	// cout << endl;
-	// vector<unsigned> compute(g.V);
-	// cudaMemcpy(compute.data(), m_p.compute, g.V * sizeof(unsigned), cudaMemcpyDeviceToHost);
-	// cout << "compute   : ";
-	// for (auto v: compute)
-	// 	cout << v << " ";
-	// cout << endl;
+	vector<degree> upper(g.V);
+	cudaMemcpy(upper.data(), m_p.l_max, g.V * sizeof(degree), cudaMemcpyDeviceToHost);
+	cout << "lmax_upper: ";
+	for (auto v: upper)
+		cout << v << " ";
+	cout << endl;
+	vector<unsigned> compute(g.V);
+	cudaMemcpy(compute.data(), m_p.compute, g.V * sizeof(unsigned), cudaMemcpyDeviceToHost);
+	cout << "compute   : ";
+	for (auto v: compute)
+		cout << v << " ";
+	cout << endl;
 
 
 	unsigned count = 0;
@@ -745,13 +719,13 @@ void kListMaintenance(Graph& g, device_graph_pointers& g_p, device_maintenance_p
 
 		cudaMemcpy(&flag, m_p.flag, sizeof(bool), cudaMemcpyDeviceToHost);
 
-		// cout << "round_cnt: " << count++ << endl;
-		// vector<degree> new_l_max(g.V);
-		// cudaMemcpy(new_l_max.data(), m_p.l_max, g.V * sizeof(degree), cudaMemcpyDeviceToHost);
-		// cout << "lmax["<<k<<"] = ";
-		// for (vertex v = 0; v < g.V; ++v)
-		// 	cout << new_l_max[v] << " ";
-		// cout << endl;
+		cout << "round_cnt: " << count++ << endl;
+		vector<degree> new_l_max(g.V);
+		cudaMemcpy(new_l_max.data(), m_p.l_max, g.V * sizeof(degree), cudaMemcpyDeviceToHost);
+		cout << "lmax["<<k<<"] = ";
+		for (vertex v = 0; v < g.V; ++v)
+			cout << new_l_max[v] << " ";
+		cout << endl;
 	}
 
 	cudaMemcpy(g.lmaxes[k].data(), m_p.l_max, g.V * sizeof(degree), cudaMemcpyDeviceToHost);
@@ -1052,7 +1026,6 @@ int main(int argc, char *argv[]) {
 	auto res = dcore(g);
 	writeDCoreResultsText(res, "../results/cudares.txt", 16);
 
-	return 0;
 	// writeDCoreResults(res, "../results/cudares");
 	// compareDCoreResults("../results/cudares", "../results/wiki_vote");
 	// compareDCoreResults("../results/cudares", "../results/amazon0601");
@@ -1093,19 +1066,19 @@ int main(int argc, char *argv[]) {
 				}
 			}
 		}
-		// if (!hasErrors) continue;
-		// for (degree k = 0; k < actual_dcore.size(); ++k) {
-		// 	cout << "lmax["<<k<<"] = ";
-		// 	for (vertex v = 0; v < m.V; ++v) {
-		// 		cout << m.lmaxes[k][v] << " ";
-		// 	}
-		// 	cout << endl;
-		// 	cout << "actu["<<k<<"] = ";
-		// 	for (vertex v = 0; v < m.V; ++v) {
-		// 		cout << actual_dcore[k][v] << " ";
-		// 	}
-		// 	cout << endl;
-		// }
+		if (!hasErrors) continue;
+		for (degree k = 0; k < actual_dcore.size(); ++k) {
+			cout << "lmax["<<k<<"] = ";
+			for (vertex v = 0; v < m.V; ++v) {
+				cout << m.lmaxes[k][v] << " ";
+			}
+			cout << endl;
+			cout << "actu["<<k<<"] = ";
+			for (vertex v = 0; v < m.V; ++v) {
+				cout << actual_dcore[k][v] << " ";
+			}
+			cout << endl;
+		}
 	}
 	cout << "total errors: " << errors << endl;
 
