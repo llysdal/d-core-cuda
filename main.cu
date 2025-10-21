@@ -429,6 +429,18 @@ __device__ degree hIndexK(device_maintenance_pointers m_p, vertex v, offset o, d
 	return d; // should never happen (note: sometimes does happen when lmax[v] = 0);
 }
 
+__device__ degree hInIndex(device_maintenance_pointers m_p, vertex v, offset o, degree k) {
+	offset histogramStart = o + v;
+
+	degree cnt = 0;
+	for (int i = m_p.l_max[v]; i >= 0; i--) {
+		cnt += m_p.histograms[histogramStart + i];
+		if (cnt >= k) return i;
+	}
+	// return m_p.l_max[v];
+	return 9999;
+}
+
 __global__ void kmaxRefineHIndex(device_graph_pointers g_p, device_maintenance_pointers m_p, unsigned V) {
 	unsigned global_threadIdx = blockIdx.x * blockDim.x + threadIdx.x;
 	for (unsigned base = 0; base < V; base += THREAD_COUNT) {
@@ -618,21 +630,21 @@ __global__ void kListFindUpperBound(device_graph_pointers g_p, device_maintenanc
 		if (m_p.k_max[v] >= k && m_p.l_max[v] == root_l_max && m_p.PED[v] > m_p.l_max[v]) {
 		// if (m_p.k_max[v] >= k && m_p.l_max[v] == root_l_max) {
 			m_p.compute[v] = true;
-			// m_p.l_max[v] = g_p.out_degrees[v];
+			m_p.l_max[v] = g_p.out_degrees[v];
 			// m_p.l_max[v] = k_adj_out[v].size();
 
-			// todo: this is probably rly expensive
-			unsigned k_adj_out_v = 0;
-			offset start = g_p.out_neighbors_offset[v];
-			offset end = g_p.out_neighbors_offset[v+1];
-			for (offset o = start; o < end; ++o) {
-				vertex neighbor = g_p.out_neighbors[o];
-
-				if (m_p.k_max[neighbor] < k) continue;
-
-				k_adj_out_v++;
-			}
-			m_p.l_max[v] = k_adj_out_v;
+			// // todo: this is probably rly expensive
+			// unsigned k_adj_out_v = 0;
+			// offset start = g_p.out_neighbors_offset[v];
+			// offset end = g_p.out_neighbors_offset[v+1];
+			// for (offset o = start; o < end; ++o) {
+			// 	vertex neighbor = g_p.out_neighbors[o];
+			//
+			// 	if (m_p.k_max[neighbor] < k) continue;
+			//
+			// 	k_adj_out_v++;
+			// }
+			// m_p.l_max[v] = k_adj_out_v;
 		}
 	}
 }
@@ -654,28 +666,29 @@ __global__ void kListRefineHIndex(device_graph_pointers g_p, device_maintenance_
 		// if (m_p.k_max[v] < k) continue; // not necessary since this vertex would never be computed anyway
 
 		// make histogram bucket (V+E) initialized to zero
+		offset histogramStart = g_p.out_neighbors_offset[v] + v;
+		// offset histogramEnd = histogramStart + m_p.l_max[v];
+		offset histogramEnd = histogramStart + g_p.out_degrees[v];
+		for (offset o = histogramStart; o <= histogramEnd; ++o)
+			m_p.histograms[o] = 0;
 
+		// put in neighbors into buckets
 		offset inStart = g_p.in_neighbors_offset[v];
 		offset inEnd = g_p.in_neighbors_offset[v+1];
 		for (offset o = inStart; o < inEnd; ++o) {
 			vertex neighbor = g_p.in_neighbors[o];
 
-			// offset m = g_p.out_neighbors_offset[neighbor];
+			if (m_p.k_max[neighbor] < k) continue;
 
-			if (m_p.k_max[neighbor] < k) {
-				m_p.tmp_neighbor_coreness[o] = 0;
-				continue;
-			}
-
-			m_p.tmp_neighbor_coreness[o] = m_p.l_max[neighbor];
 			// each vertex write to histogram buffer at min(lmax[v], lmax[neighbor])
-
+			m_p.histograms[histogramStart + min(m_p.l_max[v],m_p.l_max[neighbor])]++;
 		}
 
 		// kernel that scans back from historgram[lmax[v]] and adds until the value is bigger or equal to k, which then returns the index at which we got above or equal to k. And that is h+ index
 
 		// calculate h index
-		degree tmp_h_index_k = hIndexK(m_p, v, g_p.in_neighbors_offset[v], g_p.in_degrees[v], k);
+		degree tmp_h_in_index = hInIndex(m_p, v, g_p.out_neighbors_offset[v], k);
+
 
 		offset start = g_p.out_neighbors_offset[v];
 		offset end = g_p.out_neighbors_offset[v+1];
@@ -696,10 +709,10 @@ __global__ void kListRefineHIndex(device_graph_pointers g_p, device_maintenance_
 		}
 
 		// calculate h index
-		degree tmp_h_index = hIndex(m_p, v, g_p.out_neighbors_offset[v], g_p.out_degrees[v]);
+		degree tmp_h_out_index = hIndex(m_p, v, g_p.out_neighbors_offset[v], g_p.out_degrees[v]);
 
-		degree res = min(tmp_h_index, tmp_h_index_k);
-		// res = tmp_h_index;
+		degree res = min(tmp_h_out_index, tmp_h_in_index);
+		// res = tmp_h_out_index;
 		// if (g_p.in_degrees[v] < k) res = tmp_h_index;
 
 		if (res < m_p.l_max[v]) {
@@ -734,12 +747,12 @@ void kListMaintenance(Graph& g, device_graph_pointers& g_p, device_maintenance_p
 	// 	cout << v << " ";
 	// cout << endl;
 
-	if (g.kmaxes[insertedEdge.first] >= k || g.kmaxes[insertedEdge.second] >= k) {
-		vertex root = insertedEdge.first;
-		if (g.lmaxes[k][insertedEdge.second] < g.lmaxes[k][insertedEdge.first])
-			root = insertedEdge.second;
-		// cout << "root_l_max " << g.lmaxes[k][root] << endl;
-	}
+	// if (g.kmaxes[insertedEdge.first] >= k || g.kmaxes[insertedEdge.second] >= k) {
+	// 	vertex root = insertedEdge.first;
+	// 	if (g.lmaxes[k][insertedEdge.second] < g.lmaxes[k][insertedEdge.first])
+	// 		root = insertedEdge.second;
+	// 	cout << "root_l_max " << g.lmaxes[k][root] << endl;
+	// }
 	kListFindUpperBound<<<BLOCK_NUMS, BLOCK_DIM>>>(g_p, m_p, g.V, k, insertedEdge.first, insertedEdge.second);
 
 	// vector<degree> upper(g.V);
@@ -1075,6 +1088,7 @@ int main(int argc, char *argv[]) {
 	auto res = dcore(g);
 	writeDCoreResultsText(res, "../results/cudares.txt", 16);
 
+
 	// writeDCoreResults(res, "../results/cudares");
 	// compareDCoreResults("../results/cudares", "../results/wiki_vote");
 	// compareDCoreResults("../results/cudares", "../results/amazon0601");
@@ -1090,10 +1104,10 @@ int main(int argc, char *argv[]) {
 	unsigned edgesAdded = 0;
 	unsigned errors = 0;
 	for (auto edge: g.edges) {
-		// if (edgesAdded == 6) break;
+		// if (edgesAdded == 25) break;
 		m.insertEdge(edge);
 		edgesAdded++;
-		// if (edgesAdded % 100 == 0)
+		if (edgesAdded % 100 == 0)
 			cout << edgesAdded << "/" << g.E << ": " << edge.first << "->" << edge.second << endl;
 
 		bool hasErrors = false;
@@ -1115,44 +1129,22 @@ int main(int argc, char *argv[]) {
 				}
 			}
 		}
-		if (!hasErrors) continue;
-		for (degree k = 0; k < actual_dcore.size(); ++k) {
-			cout << "lmax["<<k<<"] = ";
-			for (vertex v = 0; v < m.V; ++v) {
-				cout << m.lmaxes[k][v] << " ";
-			}
-			cout << endl;
-			cout << "actu["<<k<<"] = ";
-			for (vertex v = 0; v < m.V; ++v) {
-				cout << actual_dcore[k][v] << " ";
-			}
-			cout << endl;
-		}
+		// if (!hasErrors) continue;
+		// for (degree k = 0; k < actual_dcore.size(); ++k) {
+		// 	cout << "lmax["<<k<<"] = ";
+		// 	for (vertex v = 0; v < m.V; ++v) {
+		// 		cout << m.lmaxes[k][v] << " ";
+		// 	}
+		// 	cout << endl;
+		// 	cout << "actu["<<k<<"] = ";
+		// 	for (vertex v = 0; v < m.V; ++v) {
+		// 		cout << actual_dcore[k][v] << " ";
+		// 	}
+		// 	cout << endl;
+		// }
 	}
 	cout << "total errors: " << errors << endl;
 
-	// kmax
-	// 2 3 3 2 3 3 3 3
-	// compute
-	// 0 1 1 0 1 1 1 1
-	//
-	// lupper
-	// 0 1 2 0 2 2 1 2
-	//
-	// h index bucket for vertex 2 (out neighbors 0 1 4 5 7)
-	// 0 1 2 2 2
-	//
-	// h index bucket for vertex 4 (1 2 5 6 7)
-	// 1 2 2 1 2
-	//
-	// h index bucket for vertex 5 (2 4 6 7)
-	// 2 2 1 2
-	//
-	// h index bucket for vertex 7 (2 4)
-	// 2 2
-	//
-	// 0 0 0 0 0 0 0 0
-	// 0 1 2 0 2 2 1 2
 
 	// // insert edge by edge to create same decomp (K MAX MAINTENANCE)
 	// Graph m(g.V);

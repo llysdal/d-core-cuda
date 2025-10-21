@@ -50,6 +50,7 @@ void allocateDeviceMaintenanceMemory(Graph& g, device_maintenance_pointers& m_p)
 	cudaMalloc(&(m_p.flag), sizeof(bool));
 	cudaMalloc(&(m_p.tmp_neighbor_coreness), g.E * sizeof(degree));
 	cudaMalloc(&(m_p.hIndex_buckets), (g.V + g.E) * sizeof(degree));
+	cudaMalloc(&(m_p.histograms), (g.V + g.E) * sizeof(unsigned));
 }
 
 void deallocateDeviceMaintenanceMemory(device_maintenance_pointers& m_p) {
@@ -64,6 +65,7 @@ void deallocateDeviceMaintenanceMemory(device_maintenance_pointers& m_p) {
 	cudaFree(m_p.flag);
 	cudaFree(m_p.tmp_neighbor_coreness);
 	cudaFree(m_p.hIndex_buckets);
+	cudaFree(m_p.histograms);
 }
 
 #endif //D_CORE_CUDA_CUDAMEM_CUH

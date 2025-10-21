@@ -5,6 +5,7 @@
 // #include <cuda.h>
 #include <omp.h>
 
+
 #define BLOCK_NUMS		40
 #define BLOCK_DIM		1024
 #define WARPS_EACH_BLOCK	(BLOCK_DIM >> 5)
@@ -50,6 +51,7 @@ typedef struct device_maintenance_pointers {
 	bool*		flag;
 	degree*		tmp_neighbor_coreness;
 	degree*		hIndex_buckets;
+	unsigned*	histograms;
 } device_maintenance_pointers;
 
 inline void swapInOut(device_graph_pointers& d_p) {
