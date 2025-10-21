@@ -115,8 +115,6 @@ __global__ void process(device_graph_pointers g_p, device_accessory_pointers a_p
 			}
 		}
 
-		__syncthreads();
-
 		for (offset o = inStart; o < inEnd; o += WARP_SIZE) {
 			if (o + LANE_ID >= inEnd) continue;
 
