@@ -5,6 +5,7 @@
 // #include <cuda.h>
 #include <omp.h>
 
+// #define PRINT_STEPS
 
 #define BLOCK_NUMS		40
 #define BLOCK_DIM		1024
