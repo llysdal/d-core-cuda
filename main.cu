@@ -410,6 +410,27 @@ __device__ degree hIndex(device_maintenance_pointers m_p, vertex v, offset o, de
 	return -1; // should never happen;
 }
 
+__device__ degree hIndexK(device_maintenance_pointers m_p, vertex v, offset o, degree d, degree k) {
+	degree bucketStart = o + v;
+	for (unsigned i = 0; i < d + 1; i++)
+		m_p.hIndex_buckets[bucketStart + i] = 0;
+
+	for (unsigned i = 0; i < d; i++) {
+		degree x = m_p.tmp_neighbor_coreness[o + i];
+		if (x >= m_p.l_max[v]) {
+			m_p.hIndex_buckets[bucketStart + m_p.l_max[v]]++;
+		} else {
+			m_p.hIndex_buckets[bucketStart + x]++;
+		}
+	}
+	unsigned cnt = 0;
+	for (int i = m_p.l_max[v]; i >= 0; i--) {
+		cnt += m_p.hIndex_buckets[bucketStart + i];
+		if (cnt >= k) return i;
+	}
+	return d; // should never happen (note: sometimes does happen when lmax[v] = 0);
+}
+
 __global__ void kmaxRefineHIndex(device_graph_pointers g_p, device_maintenance_pointers m_p, unsigned V) {
 	unsigned global_threadIdx = blockIdx.x * blockDim.x + threadIdx.x;
 	for (unsigned base = 0; base < V; base += THREAD_COUNT) {
@@ -597,6 +618,7 @@ __global__ void kListFindUpperBound(device_graph_pointers g_p, device_maintenanc
 
 		// if (m_p.k_max[v] >= k && m_p.l_max[v] <= root_l_max + 1 && m_p.PED[v] >= m_p.l_max[v]) {
 		if (m_p.k_max[v] >= k && m_p.l_max[v] == root_l_max && m_p.PED[v] > m_p.l_max[v]) {
+		// if (m_p.k_max[v] >= k && m_p.l_max[v] == root_l_max) {
 			m_p.compute[v] = true;
 			// m_p.l_max[v] = g_p.out_degrees[v];
 			// m_p.l_max[v] = k_adj_out[v].size();
@@ -633,6 +655,30 @@ __global__ void kListRefineHIndex(device_graph_pointers g_p, device_maintenance_
 
 		// if (m_p.k_max[v] < k) continue; // not necessary since this vertex would never be computed anyway
 
+		// make histogram bucket (V+E) initialized to zero
+
+		offset inStart = g_p.in_neighbors_offset[v];
+		offset inEnd = g_p.in_neighbors_offset[v+1];
+		for (offset o = inStart; o < inEnd; ++o) {
+			vertex neighbor = g_p.in_neighbors[o];
+
+			// offset m = g_p.out_neighbors_offset[neighbor];
+
+			if (m_p.k_max[neighbor] < k) {
+				m_p.tmp_neighbor_coreness[o] = 0;
+				continue;
+			}
+
+			m_p.tmp_neighbor_coreness[o] = m_p.l_max[neighbor];
+			// each vertex write to histogram buffer at min(lmax[v], lmax[neighbor])
+
+		}
+
+		// kernel that scans back from historgram[lmax[v]] and adds until the value is bigger or equal to k, which then returns the index at which we got above or equal to k. And that is h+ index
+
+		// calculate h index
+		degree tmp_h_index_k = hIndexK(m_p, v, g_p.in_neighbors_offset[v], g_p.in_degrees[v], k);
+
 		offset start = g_p.out_neighbors_offset[v];
 		offset end = g_p.out_neighbors_offset[v+1];
 		for (offset o = start; o < end; ++o) {
@@ -643,18 +689,23 @@ __global__ void kListRefineHIndex(device_graph_pointers g_p, device_maintenance_
 				continue;
 			}
 
-			if (m_p.l_max[neighbor] >= m_p.original_l_max[v]) {
-				m_p.tmp_neighbor_coreness[o] = m_p.l_max[neighbor];
-			} else {
-				m_p.tmp_neighbor_coreness[o] = 0;
-			}
+			m_p.tmp_neighbor_coreness[o] = m_p.l_max[neighbor];
+			// if (m_p.l_max[neighbor] >= m_p.original_l_max[v]) {
+			// 	m_p.tmp_neighbor_coreness[o] = m_p.l_max[neighbor];
+			// } else {
+			// 	m_p.tmp_neighbor_coreness[o] = 0;
+			// }
 		}
 
 		// calculate h index
 		degree tmp_h_index = hIndex(m_p, v, g_p.out_neighbors_offset[v], g_p.out_degrees[v]);
 
-		if (tmp_h_index < m_p.l_max[v]) {
-			m_p.new_l_max[v] = tmp_h_index;
+		degree res = min(tmp_h_index, tmp_h_index_k);
+		// res = tmp_h_index;
+		// if (g_p.in_degrees[v] < k) res = tmp_h_index;
+
+		if (res < m_p.l_max[v]) {
+			m_p.new_l_max[v] = res;
 			localFlag = true;
 		}
 	}
@@ -671,40 +722,40 @@ void kListMaintenance(Graph& g, device_graph_pointers& g_p, device_maintenance_p
 
 	// cout << "ed" << endl;
 	kListCalculateEDandPED<<<BLOCK_NUMS, BLOCK_DIM>>>(g_p, m_p, g.V, k);
-	vector<degree> ED(g.V);
-	vector<degree> PED(g.V);
-	cudaMemcpy(ED.data(), m_p.ED, g.V * sizeof(degree), cudaMemcpyDeviceToHost);
-	cudaMemcpy(PED.data(), m_p.PED, g.V * sizeof(degree), cudaMemcpyDeviceToHost);
-
-	cout << " ED: ";
-	for (auto v: ED)
-		cout << v << " ";
-	cout << endl;
-	cout << "PED: ";
-	for (auto v: PED)
-		cout << v << " ";
-	cout << endl;
+	// vector<degree> ED(g.V);
+	// vector<degree> PED(g.V);
+	// cudaMemcpy(ED.data(), m_p.ED, g.V * sizeof(degree), cudaMemcpyDeviceToHost);
+	// cudaMemcpy(PED.data(), m_p.PED, g.V * sizeof(degree), cudaMemcpyDeviceToHost);
+	//
+	// cout << " ED: ";
+	// for (auto v: ED)
+	// 	cout << v << " ";
+	// cout << endl;
+	// cout << "PED: ";
+	// for (auto v: PED)
+	// 	cout << v << " ";
+	// cout << endl;
 
 	if (g.kmaxes[insertedEdge.first] >= k || g.kmaxes[insertedEdge.second] >= k) {
 		vertex root = insertedEdge.first;
 		if (g.lmaxes[k][insertedEdge.second] < g.lmaxes[k][insertedEdge.first])
 			root = insertedEdge.second;
-		cout << "root_l_max " << g.lmaxes[k][root] << endl;
+		// cout << "root_l_max " << g.lmaxes[k][root] << endl;
 	}
 	kListFindUpperBound<<<BLOCK_NUMS, BLOCK_DIM>>>(g_p, m_p, g.V, k, insertedEdge.first, insertedEdge.second);
 
-	vector<degree> upper(g.V);
-	cudaMemcpy(upper.data(), m_p.l_max, g.V * sizeof(degree), cudaMemcpyDeviceToHost);
-	cout << "lmax_upper: ";
-	for (auto v: upper)
-		cout << v << " ";
-	cout << endl;
-	vector<unsigned> compute(g.V);
-	cudaMemcpy(compute.data(), m_p.compute, g.V * sizeof(unsigned), cudaMemcpyDeviceToHost);
-	cout << "compute   : ";
-	for (auto v: compute)
-		cout << v << " ";
-	cout << endl;
+	// vector<degree> upper(g.V);
+	// cudaMemcpy(upper.data(), m_p.l_max, g.V * sizeof(degree), cudaMemcpyDeviceToHost);
+	// cout << "lmax_upper: ";
+	// for (auto v: upper)
+	// 	cout << v << " ";
+	// cout << endl;
+	// vector<unsigned> compute(g.V);
+	// cudaMemcpy(compute.data(), m_p.compute, g.V * sizeof(unsigned), cudaMemcpyDeviceToHost);
+	// cout << "compute   : ";
+	// for (auto v: compute)
+	// 	cout << v << " ";
+	// cout << endl;
 
 
 	unsigned count = 0;
@@ -719,13 +770,13 @@ void kListMaintenance(Graph& g, device_graph_pointers& g_p, device_maintenance_p
 
 		cudaMemcpy(&flag, m_p.flag, sizeof(bool), cudaMemcpyDeviceToHost);
 
-		cout << "round_cnt: " << count++ << endl;
-		vector<degree> new_l_max(g.V);
-		cudaMemcpy(new_l_max.data(), m_p.l_max, g.V * sizeof(degree), cudaMemcpyDeviceToHost);
-		cout << "lmax["<<k<<"] = ";
-		for (vertex v = 0; v < g.V; ++v)
-			cout << new_l_max[v] << " ";
-		cout << endl;
+		// cout << "round_cnt: " << count++ << endl;
+		// vector<degree> new_l_max(g.V);
+		// cudaMemcpy(new_l_max.data(), m_p.l_max, g.V * sizeof(degree), cudaMemcpyDeviceToHost);
+		// cout << "lmax["<<k<<"] = ";
+		// for (vertex v = 0; v < g.V; ++v)
+		// 	cout << new_l_max[v] << " ";
+		// cout << endl;
 	}
 
 	cudaMemcpy(g.lmaxes[k].data(), m_p.l_max, g.V * sizeof(degree), cudaMemcpyDeviceToHost);
@@ -1016,7 +1067,7 @@ void maintainKList(Graph& g, vector<pair<vertex, vertex>> modifiedEdges, degree 
 
 int main(int argc, char *argv[]) {
 	// const string filename = "../dataset/wiki_vote";
-	const string filename = "../dataset/digrapherror";
+	const string filename = "../dataset/congress";
 
 	auto start = chrono::steady_clock::now();
 
@@ -1041,7 +1092,7 @@ int main(int argc, char *argv[]) {
 	unsigned edgesAdded = 0;
 	unsigned errors = 0;
 	for (auto edge: g.edges) {
-		// if (edgesAdded == 25) break;
+		// if (edgesAdded == 6) break;
 		m.insertEdge(edge);
 		edgesAdded++;
 		// if (edgesAdded % 100 == 0)
