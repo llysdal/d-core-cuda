@@ -11,6 +11,8 @@ class Graph {
 public:
 	unsigned V;
 	unsigned E;
+	vector<vector<vertex>> inEdges;
+	vector<vector<vertex>> outEdges;
 	vector<pair<vertex, vertex>> edges;
 	vertex* in_neighbors;
 	vertex* out_neighbors;
@@ -26,7 +28,7 @@ public:
 	Graph();
 	explicit Graph(const string& inputFile);
 	explicit Graph(unsigned V);
-	void insertEdge(pair<vertex, vertex> edge);
+	void insertEdges(const vector<pair<vertex, vertex>>& edgesToBeInserted);
 	void readFile(const string& inputFile);
 	void writeBinary(const string& inputFile);
 	bool readBinary(const string& inputFile);

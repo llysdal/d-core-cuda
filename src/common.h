@@ -19,6 +19,8 @@
 
 #define BUFFER_SIZE		1'000'000
 
+#define MODIFIED_EDGES_BUFFER_SIZE 1'000
+
 typedef int degree;
 typedef unsigned vertex;
 typedef unsigned offset;
@@ -41,17 +43,14 @@ typedef struct device_accessory_pointers {
 } device_accessory_pointers;
 
 typedef struct device_maintenance_pointers {
+	degree*		modified_edges;
 	degree*		k_max;
-	degree*		original_k_max;
 	degree*		l_max;
-	degree*		original_l_max;
 	degree*		new_l_max;
 	unsigned*	compute;
 	degree*		ED;
 	degree*		PED;
 	bool*		flag;
-	degree*		tmp_neighbor_coreness;
-	degree*		hIndex_buckets;
 	unsigned*	histograms;
 } device_maintenance_pointers;
 
