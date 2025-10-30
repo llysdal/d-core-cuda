@@ -9,6 +9,7 @@ void allocateDeviceGraphMemory(Graph& g, device_graph_pointers& g_p) {
 	cudaMalloc(&(g_p.out_neighbors_offset), (g.V+1) * sizeof(offset));
 	cudaMalloc(&(g_p.in_degrees), (g.V) * sizeof(degree));
 	cudaMalloc(&(g_p.out_degrees), (g.V) * sizeof(degree));
+	cudaMalloc(&(g_p.modified_edges), MODIFIED_EDGES_BUFFER_SIZE * sizeof(vertex));
 }
 
 void deallocateDeviceGraphMemory(device_graph_pointers& g_p) {
@@ -54,7 +55,6 @@ void deallocateDeviceAccessoryMemory(device_accessory_pointers& a_p) {
 
 // Maintenance memory (used for d-core maintenance)
 void allocateDeviceMaintenanceMemory(Graph& g, device_maintenance_pointers& m_p) {
-	cudaMalloc(&(m_p.modified_edges), MODIFIED_EDGES_BUFFER_SIZE * sizeof(vertex));
 	cudaMalloc(&(m_p.k_max), g.V * sizeof(degree));
 	cudaMalloc(&(m_p.l_max), g.V * sizeof(degree));
 	cudaMalloc(&(m_p.new_l_max), g.V * sizeof(degree));
@@ -66,7 +66,6 @@ void allocateDeviceMaintenanceMemory(Graph& g, device_maintenance_pointers& m_p)
 }
 
 void deallocateDeviceMaintenanceMemory(device_maintenance_pointers& m_p) {
-	cudaFree(m_p.modified_edges);
 	cudaFree(m_p.k_max);
 	cudaFree(m_p.l_max);
 	cudaFree(m_p.new_l_max);
@@ -77,27 +76,27 @@ void deallocateDeviceMaintenanceMemory(device_maintenance_pointers& m_p) {
 	cudaFree(m_p.histograms);
 }
 
-void initializeDeviceMaintenanceMemoryForKmax(Graph& g, device_maintenance_pointers& m_p, vector<degree>& kmax) {
-	cudaMemcpy(m_p.k_max, kmax.data(), g.V * sizeof(vertex), cudaMemcpyHostToDevice);
-	cudaMemset(m_p.compute, 0, g.V * sizeof(unsigned));
+void initializeDeviceMaintenanceMemoryForKmax(unsigned V, device_maintenance_pointers& m_p, vector<degree>& kmax) {
+	cudaMemcpy(m_p.k_max, kmax.data(), V * sizeof(vertex), cudaMemcpyHostToDevice);
+	cudaMemset(m_p.compute, 0, V * sizeof(unsigned));
 
-	cudaMemset(m_p.ED, 0, g.V * sizeof(degree));
+	cudaMemset(m_p.ED, 0, V * sizeof(degree));
 }
 
-void initializeDeviceMaintenanceMemoryForKList(Graph& g, device_maintenance_pointers& m_p, vector<degree>& lmax) {
-	cudaMemcpy(m_p.l_max, lmax.data(), g.V * sizeof(vertex), cudaMemcpyHostToDevice);
-	cudaMemset(m_p.compute, 0, g.V * sizeof(unsigned));
+void initializeDeviceMaintenanceMemoryForKList(unsigned V, device_maintenance_pointers& m_p, vector<degree>& lmax) {
+	cudaMemcpy(m_p.l_max, lmax.data(), V * sizeof(vertex), cudaMemcpyHostToDevice);
+	cudaMemset(m_p.compute, 0, V * sizeof(unsigned));
 
-	cudaMemset(m_p.ED, 0, g.V * sizeof(degree));
+	cudaMemset(m_p.ED, 0, V * sizeof(degree));
 }
 
-void putModifiedEdgesInDeviceMemory(device_maintenance_pointers& m_p, vector<pair<vertex, vertex>> edges) {
+void putModifiedEdgesInDeviceMemory(device_graph_pointers& g_p, vector<pair<vertex, vertex>> edges) {
 	auto data = new vertex[edges.size() * 2];
 	for (unsigned e = 0; e < edges.size(); ++e) {
 		data[e*2] = edges[e].first;
 		data[e*2+1] = edges[e].second;
 	}
-	cudaMemcpy(m_p.modified_edges, data, edges.size() * 2 * sizeof(vertex), cudaMemcpyHostToDevice);
+	cudaMemcpy(g_p.modified_edges, data, edges.size() * 2 * sizeof(vertex), cudaMemcpyHostToDevice);
 }
 
 

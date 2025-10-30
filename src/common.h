@@ -32,6 +32,7 @@ typedef struct device_graph_pointers {
 	offset* out_neighbors_offset;
 	degree* in_degrees;
 	degree* out_degrees;
+	vertex*	modified_edges;
 } device_graph_pointers;
 
 typedef struct device_accessory_pointers {
@@ -43,7 +44,6 @@ typedef struct device_accessory_pointers {
 } device_accessory_pointers;
 
 typedef struct device_maintenance_pointers {
-	degree*		modified_edges;
 	degree*		k_max;
 	degree*		l_max;
 	degree*		new_l_max;
