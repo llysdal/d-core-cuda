@@ -1,6 +1,8 @@
 #include "common.h"
 #include "graph_gpu.h"
 
+#include <numeric>
+
 GraphGPU::GraphGPU() {
 
 }
@@ -17,6 +19,7 @@ GraphGPU::GraphGPU(Graph& g, device_graph_pointers dgp) {
 	g_p = dgp;
 	cudaMemset(g_p.in_degrees, 0, g.V * sizeof(vertex));
 	cudaMemset(g_p.out_degrees, 0, g.V * sizeof(vertex));
+
 	cudaMemcpy(g_p.in_neighbors_offset, g.in_neighbors_offset, (g.V + 1) * sizeof(offset), cudaMemcpyHostToDevice);
 	cudaMemcpy(g_p.out_neighbors_offset, g.out_neighbors_offset, (g.V + 1) * sizeof(offset), cudaMemcpyHostToDevice);
 }

@@ -22,6 +22,8 @@
 
 #define MODIFIED_EDGES_BUFFER_SIZE 1'000
 
+#define OFFSET_GAP 512
+
 typedef int degree;
 typedef unsigned vertex;
 typedef unsigned offset;
@@ -52,6 +54,7 @@ typedef struct device_accessory_pointers {
 
 typedef struct device_maintenance_pointers {
 	degree*		k_max_max;
+	degree*		m_value;
 	degree*		k_max;
 	degree*		l_max;
 	degree*		new_l_max;

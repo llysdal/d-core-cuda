@@ -56,6 +56,7 @@ void deallocateDeviceAccessoryMemory(device_accessory_pointers& a_p) {
 // Maintenance memory (used for d-core maintenance)
 void allocateDeviceMaintenanceMemory(Graph& g, device_maintenance_pointers& m_p) {
 	cudaMalloc(&(m_p.k_max_max), sizeof(degree));
+	cudaMalloc(&(m_p.m_value), sizeof(degree));
 	cudaMalloc(&(m_p.k_max), g.V * sizeof(degree));
 	cudaMalloc(&(m_p.l_max), g.V * sizeof(degree));
 	cudaMalloc(&(m_p.new_l_max), g.V * sizeof(degree));
@@ -68,6 +69,7 @@ void allocateDeviceMaintenanceMemory(Graph& g, device_maintenance_pointers& m_p)
 
 void deallocateDeviceMaintenanceMemory(device_maintenance_pointers& m_p) {
 	cudaFree(m_p.k_max_max);
+	cudaFree(m_p.m_value);
 	cudaFree(m_p.k_max);
 	cudaFree(m_p.l_max);
 	cudaFree(m_p.new_l_max);
