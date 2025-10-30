@@ -982,7 +982,7 @@ int main(int argc, char *argv[]) {
 	// generateGraph("../dataset/random", 10, 40);
 
 	// const string filename = "../dataset/wiki_vote";
-	const string filename = "../dataset/wiki_vote";
+	const string filename = "../dataset/email";
 
 	auto start = chrono::steady_clock::now();
 
@@ -1003,8 +1003,8 @@ int main(int argc, char *argv[]) {
 	device_maintenance_pointers m_p;
 	allocateDeviceMaintenanceMemory(g, m_p);
 
-#define SPEED_TEST
-// #define STEP_TEST
+// #define SPEED_TEST
+#define STEP_TEST
 
 	// ***********************************************r*******************************
 	// // speed test
@@ -1040,7 +1040,7 @@ int main(int argc, char *argv[]) {
 	// ******************************************************************************
 #ifdef STEP_TEST
 	Graph m(g.V);
-	unsigned batchSize = 1000;
+	unsigned batchSize = 500;
 	unsigned edgesAdded = 0;
 	unsigned errors = 0;
 	for (unsigned batchStart = 0; batchStart < g.E; batchStart += batchSize) {

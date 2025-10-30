@@ -3,8 +3,10 @@
 
 // Graph memory
 void allocateDeviceGraphMemory(Graph& g, device_graph_pointers& g_p) {
-	cudaMalloc(&(g_p.in_neighbors), g.E * sizeof(vertex));
-	cudaMalloc(&(g_p.out_neighbors), g.E * sizeof(vertex));
+	// cudaMalloc(&(g_p.in_neighbors), g.E * sizeof(vertex));
+	// cudaMalloc(&(g_p.out_neighbors), g.E * sizeof(vertex));
+	cudaMalloc(&(g_p.in_neighbors), (g.V * OFFSET_GAP) * sizeof(vertex));
+	cudaMalloc(&(g_p.out_neighbors), (g.V * OFFSET_GAP) * sizeof(vertex));
 	cudaMalloc(&(g_p.in_neighbors_offset), (g.V+1) * sizeof(offset));
 	cudaMalloc(&(g_p.out_neighbors_offset), (g.V+1) * sizeof(offset));
 	cudaMalloc(&(g_p.in_degrees), (g.V) * sizeof(degree));
