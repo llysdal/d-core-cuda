@@ -4,6 +4,7 @@
 // #include <cuda_runtime_api.h>
 // #include <cuda.h>
 #include <omp.h>
+#include <vector>
 
 // #define PRINT_STEPS
 
@@ -25,6 +26,12 @@ typedef int degree;
 typedef unsigned vertex;
 typedef unsigned offset;
 
+typedef struct GraphData {
+	unsigned V;
+	std::vector<degree>& kmaxes;
+	std::vector<std::vector<degree>>& lmaxes;
+};
+
 typedef struct device_graph_pointers {
 	vertex* in_neighbors;
 	vertex* out_neighbors;
@@ -44,6 +51,7 @@ typedef struct device_accessory_pointers {
 } device_accessory_pointers;
 
 typedef struct device_maintenance_pointers {
+	degree*		k_max_max;
 	degree*		k_max;
 	degree*		l_max;
 	degree*		new_l_max;

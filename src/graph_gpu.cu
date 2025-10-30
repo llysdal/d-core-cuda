@@ -11,7 +11,8 @@ GraphGPU::GraphGPU(Graph& g, device_graph_pointers dgp) {
 
 	kmaxes = vector<degree>(V);
 	lmaxes = vector<vector<degree>>();
-	lmaxes.emplace_back(vector<degree>(V));
+	// for (int i = 0; i < g.kmax; i++)
+		lmaxes.emplace_back(vector<degree>(V));
 
 	g_p = dgp;
 	cudaMemset(g_p.in_degrees, 0, g.V * sizeof(vertex));
