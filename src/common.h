@@ -7,8 +7,13 @@
 #include <vector>
 
 // #define PRINT_STEPS
+#define PRINT_MAINTENANCE_STATS
 
-#define BLOCK_NUMS		40
+#define FORCE_RECALCULATE_DCORE false
+#define FORCE_REBUILD_GRAPH		false	// required for non in-place insertion
+#define OFFSET_GAP		1
+
+#define BLOCK_NUMS		50
 #define BLOCK_DIM		1024
 #define WARPS_EACH_BLOCK	(BLOCK_DIM >> 5)
 #define THREAD_COUNT	(BLOCK_DIM * BLOCK_NUMS)
@@ -20,9 +25,8 @@
 
 #define BUFFER_SIZE		1'000'000
 
-#define MODIFIED_EDGES_BUFFER_SIZE 1'000
+#define MODIFIED_EDGES_BUFFER_SIZE 2'000
 
-#define OFFSET_GAP 512
 
 typedef int degree;
 typedef unsigned vertex;
@@ -41,6 +45,8 @@ typedef struct device_graph_pointers {
 	offset* out_neighbors_offset;
 	degree* in_degrees;
 	degree* out_degrees;
+	degree* in_degrees_orig;
+	degree* out_degrees_orig;
 	vertex*	modified_edges;
 } device_graph_pointers;
 
@@ -68,6 +74,7 @@ typedef struct device_maintenance_pointers {
 inline void swapInOut(device_graph_pointers& d_p) {
 	// this is an easy way to turn our KList function into an LList function!
 	std::swap(d_p.in_degrees, d_p.out_degrees);
+	std::swap(d_p.in_degrees_orig, d_p.out_degrees_orig);
 	std::swap(d_p.in_neighbors, d_p.out_neighbors);
 	std::swap(d_p.in_neighbors_offset, d_p.out_neighbors_offset);
 }

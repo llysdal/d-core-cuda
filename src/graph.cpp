@@ -57,6 +57,15 @@ void Graph::insertEdges(const vector<pair<vertex, vertex>>& edgesToBeInserted) {
 	}
 }
 
+void Graph::insertEdgesInPlace(const vector<pair<vertex, vertex>>& edgesToBeInserted) {
+	for (auto &[first, second] : edgesToBeInserted) {
+		out_neighbors[out_neighbors_offset[first] + out_degrees[first]] = second;
+		out_degrees[first]++;
+		in_neighbors[in_neighbors_offset[second] + in_degrees[second]] = first;
+		in_degrees[second]++;
+	}
+}
+
 void Graph::readFile(const string& inputFile) {
     ifstream infile;
     infile.open(inputFile);
@@ -104,8 +113,8 @@ void Graph::readFile(const string& inputFile) {
 	in_degrees = new degree[V];
 	out_degrees = new degree[V];
 	for (int i=0; i<V; i++) {
-		in_degrees[i] = inEdges[i].size();
-		out_degrees[i] = outEdges[i].size();
+		in_degrees[i] = inEdges[i].size()	+ OFFSET_GAP;
+		out_degrees[i] = outEdges[i].size() + OFFSET_GAP;
 	}
 	cout << "> Set up degrees..." << endl;
 
@@ -116,31 +125,43 @@ void Graph::readFile(const string& inputFile) {
 	out_neighbors_offset[0] = 0;
 	partial_sum(out_degrees, out_degrees+V, out_neighbors_offset+1);
 
+	if (OFFSET_GAP > 0) {
+		for (int i=0; i<V; i++) {
+			in_degrees[i] = inEdges[i].size();
+			out_degrees[i] = outEdges[i].size();
+		}
+	}
+
 	cout << "> Set up offsets..." << endl;
 
-	in_neighbors = new vertex[E];
-	out_neighbors = new vertex[E];
+	in_neighbors = new vertex[E + OFFSET_GAP * V];
+	out_neighbors = new vertex[E + OFFSET_GAP * V];
 
 	#pragma omp parallel for
 	for (vertex v = 0; v < V; v++) {
 		auto it = inEdges[v].begin();
-		for (offset j = in_neighbors_offset[v]; j < in_neighbors_offset[v+1]; j++, it++)
+		for (offset j = in_neighbors_offset[v]; j < in_neighbors_offset[v] + in_degrees[v]; j++, it++)
 			in_neighbors[j] = *it;
 	}
 
 	#pragma omp parallel for
 	for (vertex v = 0; v < V; v++) {
 		auto it = outEdges[v].begin();
-		for (offset j = out_neighbors_offset[v]; j < out_neighbors_offset[v+1]; j++, it++)
+		for (offset j = out_neighbors_offset[v]; j < out_neighbors_offset[v] + out_degrees[v]; j++, it++)
 			out_neighbors[j] = *it;
 	}
 
 	cout << "> Set up neighbors..." << endl;
+
+	kmaxes = vector<degree>(V);
+	lmaxes = vector<vector<degree>>();
+	lmaxes.emplace_back(vector<degree>(V));
 }
 
 void Graph::writeBinary(const string& inputFile) {
 	ofstream bin;
-	bin.open(inputFile + string("-binary"), ios::binary | ios::out);
+	if (OFFSET_GAP == 0) bin.open(inputFile + string("-binary"), ios::binary | ios::out);
+	else bin.open(inputFile + string("-binary-g=") + to_string(OFFSET_GAP), ios::binary | ios::out);
 
 	if (bin) {
 		cout << "Graph writing binary..." << endl;
@@ -151,20 +172,23 @@ void Graph::writeBinary(const string& inputFile) {
 		bin.write(reinterpret_cast<char*>(out_degrees), static_cast<streamsize>(V * sizeof(degree)));
 		bin.write(reinterpret_cast<char*>(in_neighbors_offset), static_cast<streamsize>((V + 1) * sizeof(offset)));
 		bin.write(reinterpret_cast<char*>(out_neighbors_offset), static_cast<streamsize>((V + 1) * sizeof(offset)));
-		bin.write(reinterpret_cast<char*>(in_neighbors), static_cast<streamsize>(E * sizeof(vertex)));
-		bin.write(reinterpret_cast<char*>(out_neighbors), static_cast<streamsize>(E * sizeof(vertex)));
+		bin.write(reinterpret_cast<char*>(in_neighbors), static_cast<streamsize>((E + OFFSET_GAP * V) * sizeof(vertex)));
+		bin.write(reinterpret_cast<char*>(out_neighbors), static_cast<streamsize>((E + OFFSET_GAP * V) * sizeof(vertex)));
 
 		bin.close();
 		auto end = chrono::steady_clock::now();
 		cout << "Graph binary written\t\t" << chrono::duration_cast<chrono::milliseconds>(end - start).count() << "ms" << endl;
 	} else {
-		cout << inputFile + string("-binary") << ": could not open file" << endl;
+		if (OFFSET_GAP == 0) cout << inputFile + string("-binary") << ": could not open file" << endl;
+		else inputFile + string("-binary-g=") + to_string(OFFSET_GAP);
 	}
 }
 
 bool Graph::readBinary(const string& inputFile) {
 	ifstream bin;
-	bin.open(inputFile + string("-binary"), ios::binary | ios::in);
+	if (OFFSET_GAP == 0) bin.open(inputFile + string("-binary"), ios::binary | ios::in);
+	else bin.open(inputFile + string("-binary-g=") + to_string(OFFSET_GAP), ios::binary | ios::in);
+
 	if (bin) {
 		cout << "Graph reading binary..." << endl;
 		auto start = chrono::steady_clock::now();
@@ -174,27 +198,35 @@ bool Graph::readBinary(const string& inputFile) {
 		out_degrees = new degree[V];
 		in_neighbors_offset = new offset[V+1];
 		out_neighbors_offset = new offset[V+1];
-		in_neighbors = new vertex[E];
-		out_neighbors = new vertex[E];
+		in_neighbors = new vertex[(E + OFFSET_GAP * V)];
+		out_neighbors = new vertex[(E + OFFSET_GAP * V)];
 		bin.read(reinterpret_cast<char*>(in_degrees), static_cast<streamsize>(V * sizeof(degree)));
 		bin.read(reinterpret_cast<char*>(out_degrees), static_cast<streamsize>(V * sizeof(degree)));
 		bin.read(reinterpret_cast<char*>(in_neighbors_offset), static_cast<streamsize>((V + 1) * sizeof(offset)));
 		bin.read(reinterpret_cast<char*>(out_neighbors_offset), static_cast<streamsize>((V + 1) * sizeof(offset)));
-		bin.read(reinterpret_cast<char*>(in_neighbors), static_cast<streamsize>(E * sizeof(vertex)));
-		bin.read(reinterpret_cast<char*>(out_neighbors), static_cast<streamsize>(E * sizeof(vertex)));
+		bin.read(reinterpret_cast<char*>(in_neighbors), static_cast<streamsize>((E + OFFSET_GAP * V) * sizeof(vertex)));
+		bin.read(reinterpret_cast<char*>(out_neighbors), static_cast<streamsize>((E + OFFSET_GAP * V) * sizeof(vertex)));
 
 		bin.close();
 		auto end = chrono::steady_clock::now();
 		cout << "Graph binary read\t\t" << chrono::duration_cast<chrono::milliseconds>(end - start).count() << "ms" << endl;
+
+		kmaxes = vector<degree>(V);
+		lmaxes = vector<vector<degree>>();
+		lmaxes.emplace_back(vector<degree>(V));
+
 		return true;
 	} else {
-		cout << inputFile + string("-binary") << ": could not open file" << endl;
+		if (OFFSET_GAP == 0) cout << inputFile + string("-binary") << ": could not open file" << endl;
+		else inputFile + string("-binary-g=") + to_string(OFFSET_GAP);
+
 	}
 	return false;
 }
 
 Graph::Graph(const string& inputFile){
-	// if (readBinary(inputFile)) return;
+	cout << "gapsize = " << OFFSET_GAP << endl;
+	if (!FORCE_REBUILD_GRAPH && readBinary(inputFile)) return;
 
     cout << "Graph reading file..." << endl;
     auto start = chrono::steady_clock::now();
@@ -202,7 +234,7 @@ Graph::Graph(const string& inputFile){
     auto end = chrono::steady_clock::now();
     cout << "Graph file loaded\t\t" << chrono::duration_cast<chrono::milliseconds>(end - start).count() << "ms" << endl;
 
-	// writeBinary(inputFile);
+	writeBinary(inputFile);
 }
 
 Graph::Graph(unsigned vertexAmount) {

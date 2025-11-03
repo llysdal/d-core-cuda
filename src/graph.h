@@ -29,6 +29,7 @@ public:
 	explicit Graph(const string& inputFile);
 	explicit Graph(unsigned V);
 	void insertEdges(const vector<pair<vertex, vertex>>& edgesToBeInserted);
+	void insertEdgesInPlace(const vector<pair<vertex, vertex>>& edgesToBeInserted);
 	void readFile(const string& inputFile);
 	void writeBinary(const string& inputFile);
 	bool readBinary(const string& inputFile);

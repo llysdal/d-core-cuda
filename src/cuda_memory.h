@@ -3,14 +3,14 @@
 
 // Graph memory
 void allocateDeviceGraphMemory(Graph& g, device_graph_pointers& g_p) {
-	// cudaMalloc(&(g_p.in_neighbors), g.E * sizeof(vertex));
-	// cudaMalloc(&(g_p.out_neighbors), g.E * sizeof(vertex));
-	cudaMalloc(&(g_p.in_neighbors), (g.V * OFFSET_GAP) * sizeof(vertex));
-	cudaMalloc(&(g_p.out_neighbors), (g.V * OFFSET_GAP) * sizeof(vertex));
+	cudaMalloc(&(g_p.in_neighbors), (g.E + OFFSET_GAP * g.V) * sizeof(vertex));
+	cudaMalloc(&(g_p.out_neighbors), (g.E + OFFSET_GAP * g.V) * sizeof(vertex));
 	cudaMalloc(&(g_p.in_neighbors_offset), (g.V+1) * sizeof(offset));
 	cudaMalloc(&(g_p.out_neighbors_offset), (g.V+1) * sizeof(offset));
 	cudaMalloc(&(g_p.in_degrees), (g.V) * sizeof(degree));
 	cudaMalloc(&(g_p.out_degrees), (g.V) * sizeof(degree));
+	cudaMalloc(&(g_p.in_degrees_orig), (g.V) * sizeof(degree));
+	cudaMalloc(&(g_p.out_degrees_orig), (g.V) * sizeof(degree));
 	cudaMalloc(&(g_p.modified_edges), MODIFIED_EDGES_BUFFER_SIZE * sizeof(vertex));
 }
 
@@ -21,15 +21,19 @@ void deallocateDeviceGraphMemory(device_graph_pointers& g_p) {
 	cudaFree(g_p.out_neighbors_offset);
 	cudaFree(g_p.in_degrees);
 	cudaFree(g_p.out_degrees);
+	cudaFree(g_p.in_degrees_orig);
+	cudaFree(g_p.out_degrees_orig);
 }
 
 void moveGraphToDevice(Graph& g, device_graph_pointers& g_p) {
-	cudaMemcpy(g_p.in_neighbors, g.in_neighbors, g.E * sizeof(vertex), cudaMemcpyHostToDevice);
-	cudaMemcpy(g_p.out_neighbors, g.out_neighbors, g.E * sizeof(vertex), cudaMemcpyHostToDevice);
+	cudaMemcpy(g_p.in_neighbors, g.in_neighbors, (g.E + OFFSET_GAP * g.V) * sizeof(vertex), cudaMemcpyHostToDevice);
+	cudaMemcpy(g_p.out_neighbors, g.out_neighbors, (g.E + OFFSET_GAP * g.V) * sizeof(vertex), cudaMemcpyHostToDevice);
 	cudaMemcpy(g_p.in_neighbors_offset, g.in_neighbors_offset, (g.V+1) * sizeof(offset), cudaMemcpyHostToDevice);
 	cudaMemcpy(g_p.out_neighbors_offset, g.out_neighbors_offset, (g.V+1) * sizeof(offset), cudaMemcpyHostToDevice);
 	cudaMemcpy(g_p.in_degrees, g.in_degrees, g.V * sizeof(offset), cudaMemcpyHostToDevice);
 	cudaMemcpy(g_p.out_degrees, g.out_degrees, g.V * sizeof(offset), cudaMemcpyHostToDevice);
+	cudaMemcpy(g_p.in_degrees_orig, g.in_degrees, g.V * sizeof(offset), cudaMemcpyHostToDevice);
+	cudaMemcpy(g_p.out_degrees_orig, g.out_degrees, g.V * sizeof(offset), cudaMemcpyHostToDevice);
 }
 
 void refreshGraphOnGPU(Graph& g, device_graph_pointers& g_p) {
@@ -66,7 +70,7 @@ void allocateDeviceMaintenanceMemory(Graph& g, device_maintenance_pointers& m_p)
 	cudaMalloc(&(m_p.ED), g.V * sizeof(degree));
 	cudaMalloc(&(m_p.PED), g.V * sizeof(degree));
 	cudaMalloc(&(m_p.flag), sizeof(bool));
-	cudaMalloc(&(m_p.histograms), (g.V + g.E) * sizeof(unsigned));
+	cudaMalloc(&(m_p.histograms), (g.V + g.E + g.V * OFFSET_GAP) * sizeof(unsigned));
 }
 
 void deallocateDeviceMaintenanceMemory(device_maintenance_pointers& m_p) {
@@ -95,12 +99,7 @@ void getLmaxFromDeviceMemory(device_maintenance_pointers& m_p, vector<degree>& l
 	cudaMemcpy(lmax.data(), m_p.l_max, lmax.size() * sizeof(degree), cudaMemcpyDeviceToHost);
 }
 
-void initializeDeviceMaintenanceMemoryForKmax(unsigned V, device_maintenance_pointers& m_p) {
-	cudaMemset(m_p.compute, 0, V * sizeof(unsigned));
-	cudaMemset(m_p.ED, 0, V * sizeof(degree));
-}
-
-void initializeDeviceMaintenanceMemoryForKList(unsigned V, device_maintenance_pointers& m_p) {
+void initializeDeviceMaintenanceMemory(unsigned V, device_maintenance_pointers& m_p) {
 	cudaMemset(m_p.compute, 0, V * sizeof(unsigned));
 	cudaMemset(m_p.ED, 0, V * sizeof(degree));
 }

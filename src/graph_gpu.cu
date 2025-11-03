@@ -20,16 +20,16 @@ GraphGPU::GraphGPU(Graph& g, device_graph_pointers dgp) {
 	cudaMemset(g_p.in_degrees, 0, g.V * sizeof(vertex));
 	cudaMemset(g_p.out_degrees, 0, g.V * sizeof(vertex));
 
-	offset* neighbors_offset = new offset[V+1];
-	neighbors_offset[0] = 0;
-	for (int i = 0; i < V+1; i++)
-		neighbors_offset[i] = i * OFFSET_GAP;
-	cudaMemcpy(g_p.in_neighbors_offset, neighbors_offset, (g.V + 1) * sizeof(offset), cudaMemcpyHostToDevice);
-	cudaMemcpy(g_p.out_neighbors_offset, neighbors_offset, (g.V + 1) * sizeof(offset), cudaMemcpyHostToDevice);
+	// offset* neighbors_offset = new offset[V+1];
+	// neighbors_offset[0] = 0;
+	// for (int i = 0; i < V+1; i++)
+	// 	neighbors_offset[i] = i * OFFSET_GAP;
+	// cudaMemcpy(g_p.in_neighbors_offset, neighbors_offset, (g.V + 1) * sizeof(offset), cudaMemcpyHostToDevice);
+	// cudaMemcpy(g_p.out_neighbors_offset, neighbors_offset, (g.V + 1) * sizeof(offset), cudaMemcpyHostToDevice);
 
 
-	// cudaMemcpy(g_p.in_neighbors_offset, g.in_neighbors_offset, (g.V + 1) * sizeof(offset), cudaMemcpyHostToDevice);
-	// cudaMemcpy(g_p.out_neighbors_offset, g.out_neighbors_offset, (g.V + 1) * sizeof(offset), cudaMemcpyHostToDevice);
+	cudaMemcpy(g_p.in_neighbors_offset, g.in_neighbors_offset, (g.V + 1) * sizeof(offset), cudaMemcpyHostToDevice);
+	cudaMemcpy(g_p.out_neighbors_offset, g.out_neighbors_offset, (g.V + 1) * sizeof(offset), cudaMemcpyHostToDevice);
 }
 
 __global__ void graphInsertEdges(device_graph_pointers g_p, unsigned edgeAmount) {
