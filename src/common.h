@@ -3,25 +3,33 @@
 
 // #include <cuda_runtime_api.h>
 // #include <cuda.h>
+#include <cinttypes>
 #include <omp.h>
 #include <vector>
 
 // #define PRINT_STEPS
 #define PRINT_MAINTENANCE_STATS
 
-#define FORCE_RECALCULATE_DCORE false
-#define FORCE_REBUILD_GRAPH		false	// required for non in-place insertion
-#define OFFSET_GAP		1
+#define HINDEX_NOWARP
+// #define HINDEX_WARP	//10x speedup!! (tested with email single add 47->46) [3x speedup on livejournal 2->1]
 
-#define BLOCK_NUMS		50
-#define BLOCK_DIM		1024
+#define SINGlE_INSERT_SKIP_CHECK	true	// check whether the single insert is correct
+
+#define FORCE_RECALCULATE_DCORE		false
+#define FORCE_REBUILD_GRAPH			false	// required for non in-place insertion
+#define OFFSET_GAP			1
+
+#define BLOCK_NUMS			50
+#define BLOCK_DIM			1024
 #define WARPS_EACH_BLOCK	(BLOCK_DIM >> 5)
-#define THREAD_COUNT	(BLOCK_DIM * BLOCK_NUMS)
-#define IS_MAIN_THREAD	threadIdx.x == 0
-#define THREAD_ID		threadIdx.x
-#define WARP_SIZE		32
-#define WARP_ID			(THREAD_ID >> 5)
-#define LANE_ID			(THREAD_ID & 31)
+#define THREAD_COUNT		(BLOCK_DIM * BLOCK_NUMS)
+#define WARP_COUNT			(WARPS_EACH_BLOCK * BLOCK_NUMS)
+#define IS_MAIN_THREAD		threadIdx.x == 0
+#define THREAD_ID			threadIdx.x
+#define WARP_SIZE			32
+#define WARP_ID				(THREAD_ID >> 5)
+#define LANE_ID				(THREAD_ID & 31)
+#define IS_MAIN_IN_WARP		(LANE_ID == 0)
 
 #define BUFFER_SIZE		1'000'000
 
@@ -36,7 +44,7 @@ typedef struct GraphData {
 	unsigned V;
 	std::vector<degree>& kmaxes;
 	std::vector<std::vector<degree>>& lmaxes;
-};
+} GraphData;
 
 typedef struct device_graph_pointers {
 	vertex* in_neighbors;
@@ -45,7 +53,7 @@ typedef struct device_graph_pointers {
 	offset* out_neighbors_offset;
 	degree* in_degrees;
 	degree* out_degrees;
-	degree* in_degrees_orig;
+	degree* in_degrees_orig;	// we need these origs since the others are clobbered and we might have offsets built in
 	degree* out_degrees_orig;
 	vertex*	modified_edges;
 } device_graph_pointers;

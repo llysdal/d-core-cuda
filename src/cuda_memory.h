@@ -2,7 +2,7 @@
 #define D_CORE_CUDA_CUDAMEM_CUH
 
 // Graph memory
-void allocateDeviceGraphMemory(Graph& g, device_graph_pointers& g_p) {
+unsigned allocateDeviceGraphMemory(Graph& g, device_graph_pointers& g_p) {
 	cudaMalloc(&(g_p.in_neighbors), (g.E + OFFSET_GAP * g.V) * sizeof(vertex));
 	cudaMalloc(&(g_p.out_neighbors), (g.E + OFFSET_GAP * g.V) * sizeof(vertex));
 	cudaMalloc(&(g_p.in_neighbors_offset), (g.V+1) * sizeof(offset));
@@ -12,6 +12,10 @@ void allocateDeviceGraphMemory(Graph& g, device_graph_pointers& g_p) {
 	cudaMalloc(&(g_p.in_degrees_orig), (g.V) * sizeof(degree));
 	cudaMalloc(&(g_p.out_degrees_orig), (g.V) * sizeof(degree));
 	cudaMalloc(&(g_p.modified_edges), MODIFIED_EDGES_BUFFER_SIZE * sizeof(vertex));
+	return (g.E + OFFSET_GAP * g.V) * sizeof(vertex)*2 +
+		(g.V+1) * sizeof(offset)*2 +
+		(g.V) * sizeof(degree)*4 +
+		MODIFIED_EDGES_BUFFER_SIZE * sizeof(vertex);
 }
 
 void deallocateDeviceGraphMemory(device_graph_pointers& g_p) {
@@ -43,12 +47,17 @@ void refreshGraphOnGPU(Graph& g, device_graph_pointers& g_p) {
 
 
 // Accessory memory (used for peeling)
-void allocateDeviceAccessoryMemory(Graph& g, device_accessory_pointers& a_p) {
+unsigned allocateDeviceAccessoryMemory(Graph& g, device_accessory_pointers& a_p) {
 	cudaMalloc(&(a_p.buffers), BUFFER_SIZE * BLOCK_NUMS * sizeof(vertex));
 	cudaMalloc(&(a_p.bufferTails), BLOCK_NUMS * sizeof(unsigned));
 	cudaMalloc(&(a_p.global_count), sizeof(unsigned));
 	cudaMalloc(&(a_p.visited), g.V * sizeof(unsigned));	// unsigned instead of bool since atomicCAS only doesn't do bools
 	cudaMalloc(&(a_p.core), g.V * sizeof(degree));
+	return BUFFER_SIZE * BLOCK_NUMS * sizeof(vertex) +
+		BLOCK_NUMS * sizeof(unsigned) +
+		sizeof(unsigned) +
+		g.V * sizeof(unsigned) +
+		g.V * sizeof(degree);
 }
 
 void deallocateDeviceAccessoryMemory(device_accessory_pointers& a_p) {
@@ -60,7 +69,7 @@ void deallocateDeviceAccessoryMemory(device_accessory_pointers& a_p) {
 }
 
 // Maintenance memory (used for d-core maintenance)
-void allocateDeviceMaintenanceMemory(Graph& g, device_maintenance_pointers& m_p) {
+unsigned allocateDeviceMaintenanceMemory(Graph& g, device_maintenance_pointers& m_p) {
 	cudaMalloc(&(m_p.k_max_max), sizeof(degree));
 	cudaMalloc(&(m_p.m_value), sizeof(degree));
 	cudaMalloc(&(m_p.k_max), g.V * sizeof(degree));
@@ -71,6 +80,11 @@ void allocateDeviceMaintenanceMemory(Graph& g, device_maintenance_pointers& m_p)
 	cudaMalloc(&(m_p.PED), g.V * sizeof(degree));
 	cudaMalloc(&(m_p.flag), sizeof(bool));
 	cudaMalloc(&(m_p.histograms), (g.V + g.E + g.V * OFFSET_GAP) * sizeof(unsigned));
+	return sizeof(degree)*2 +
+		g.V * sizeof(degree)*5 +
+		g.V * sizeof(unsigned) +
+		sizeof(bool) +
+		(g.V + g.E + g.V * OFFSET_GAP) * sizeof(unsigned);
 }
 
 void deallocateDeviceMaintenanceMemory(device_maintenance_pointers& m_p) {
