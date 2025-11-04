@@ -51,7 +51,7 @@ __global__ void graphInsertEdges(device_graph_pointers g_p, unsigned edgeAmount)
 
 void GraphGPU::insertEdges(const vector<pair<vertex, vertex>>& edges) {
 	E += edges.size();
-	graphInsertEdges<<<BLOCK_NUMS, BLOCK_DIM>>>(g_p, edges.size());
+	graphInsertEdges<<<BLOCK_COUNT, BLOCK_DIM>>>(g_p, edges.size());
 }
 
 GraphGPU::~GraphGPU() {

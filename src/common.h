@@ -7,27 +7,32 @@
 #include <omp.h>
 #include <vector>
 
+using namespace std;
+
 // #define PRINT_STEPS
 #define PRINT_MAINTENANCE_STATS
 
-#define HINDEX_NOWARP
-// #define HINDEX_WARP	//10x speedup!! (tested with email single add 47->46) [3x speedup on livejournal 2->1]
+// #define HINDEX_NOWARP
+#define HINDEX_WARP	//10x speedup!! (tested with email single add 47->46) [3x speedup on livejournal 2->1]
 
-#define SINGlE_INSERT_SKIP_CHECK	true	// check whether the single insert is correct
+#define SINGlE_INSERT_SKIP_CHECK	false	// check whether the single insert is correct
 
 #define FORCE_RECALCULATE_DCORE		false
-#define FORCE_REBUILD_GRAPH			false	// required for non in-place insertion
-#define OFFSET_GAP			1
+#define FORCE_REBUILD_GRAPH			true	// required for non in-place insertion
+#define OFFSET_GAP			0
 
-#define BLOCK_NUMS			50
+#define BLOCK_COUNT			1
 #define BLOCK_DIM			1024
 #define WARPS_EACH_BLOCK	(BLOCK_DIM >> 5)
-#define THREAD_COUNT		(BLOCK_DIM * BLOCK_NUMS)
-#define WARP_COUNT			(WARPS_EACH_BLOCK * BLOCK_NUMS)
+#define THREAD_COUNT		(BLOCK_DIM * BLOCK_COUNT)
+#define WARP_COUNT			(WARPS_EACH_BLOCK * BLOCK_COUNT)
 #define IS_MAIN_THREAD		threadIdx.x == 0
+#define BLOCK_ID			blockIdx.x
 #define THREAD_ID			threadIdx.x
+#define GLOBAL_THREAD_ID	(BLOCK_ID * BLOCK_DIM + THREAD_ID)
 #define WARP_SIZE			32
 #define WARP_ID				(THREAD_ID >> 5)
+#define GLOBAL_WARP_ID		(BLOCK_ID * WARPS_EACH_BLOCK + WARP_ID)
 #define LANE_ID				(THREAD_ID & 31)
 #define IS_MAIN_IN_WARP		(LANE_ID == 0)
 
@@ -40,11 +45,18 @@ typedef int degree;
 typedef unsigned vertex;
 typedef unsigned offset;
 
-typedef struct GraphData {
+class GraphInterface {
+public:
 	unsigned V;
-	std::vector<degree>& kmaxes;
-	std::vector<std::vector<degree>>& lmaxes;
-} GraphData;
+	unsigned E;
+	degree kmax;
+	vector<degree> kmaxes;
+	degree lmax;
+	vector<vector<degree>> lmaxes;
+	virtual void insertEdges(const vector<pair<vertex, vertex>>& edgesToBeInserted) = 0;
+	virtual void insertEdgesInPlace(const vector<pair<vertex, vertex>>& edgesToBeInserted) = 0;
+	virtual ~GraphInterface() {}
+};
 
 typedef struct device_graph_pointers {
 	vertex* in_neighbors;
@@ -81,10 +93,10 @@ typedef struct device_maintenance_pointers {
 
 inline void swapInOut(device_graph_pointers& d_p) {
 	// this is an easy way to turn our KList function into an LList function!
-	std::swap(d_p.in_degrees, d_p.out_degrees);
-	std::swap(d_p.in_degrees_orig, d_p.out_degrees_orig);
-	std::swap(d_p.in_neighbors, d_p.out_neighbors);
-	std::swap(d_p.in_neighbors_offset, d_p.out_neighbors_offset);
+	swap(d_p.in_degrees, d_p.out_degrees);
+	swap(d_p.in_degrees_orig, d_p.out_degrees_orig);
+	swap(d_p.in_neighbors, d_p.out_neighbors);
+	swap(d_p.in_neighbors_offset, d_p.out_neighbors_offset);
 }
 
 #endif //COMMON_H

@@ -48,13 +48,13 @@ void refreshGraphOnGPU(Graph& g, device_graph_pointers& g_p) {
 
 // Accessory memory (used for peeling)
 unsigned allocateDeviceAccessoryMemory(Graph& g, device_accessory_pointers& a_p) {
-	cudaMalloc(&(a_p.buffers), BUFFER_SIZE * BLOCK_NUMS * sizeof(vertex));
-	cudaMalloc(&(a_p.bufferTails), BLOCK_NUMS * sizeof(unsigned));
+	cudaMalloc(&(a_p.buffers), BUFFER_SIZE * BLOCK_COUNT * sizeof(vertex));
+	cudaMalloc(&(a_p.bufferTails), BLOCK_COUNT * sizeof(unsigned));
 	cudaMalloc(&(a_p.global_count), sizeof(unsigned));
 	cudaMalloc(&(a_p.visited), g.V * sizeof(unsigned));	// unsigned instead of bool since atomicCAS only doesn't do bools
 	cudaMalloc(&(a_p.core), g.V * sizeof(degree));
-	return BUFFER_SIZE * BLOCK_NUMS * sizeof(vertex) +
-		BLOCK_NUMS * sizeof(unsigned) +
+	return BUFFER_SIZE * BLOCK_COUNT * sizeof(vertex) +
+		BLOCK_COUNT * sizeof(unsigned) +
 		sizeof(unsigned) +
 		g.V * sizeof(unsigned) +
 		g.V * sizeof(degree);

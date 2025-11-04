@@ -7,10 +7,8 @@
 using namespace std;
 
 
-class Graph {
+class Graph: public GraphInterface {
 public:
-	unsigned V;
-	unsigned E;
 	vector<vector<vertex>> inEdges;
 	vector<vector<vertex>> outEdges;
 	vector<pair<vertex, vertex>> edges;
@@ -20,16 +18,11 @@ public:
 	offset* out_neighbors_offset;
 	degree* in_degrees;
 	degree* out_degrees;
-	// unsigned int kmax, dmax;
-	degree kmax;
-	vector<degree> kmaxes;
-	degree lmax;
-	vector<vector<degree>> lmaxes;
 	Graph();
 	explicit Graph(const string& inputFile);
 	explicit Graph(unsigned V);
-	void insertEdges(const vector<pair<vertex, vertex>>& edgesToBeInserted);
-	void insertEdgesInPlace(const vector<pair<vertex, vertex>>& edgesToBeInserted);
+	void insertEdges(const vector<pair<vertex, vertex>>& edgesToBeInserted) override;
+	void insertEdgesInPlace(const vector<pair<vertex, vertex>>& edgesToBeInserted) override;
 	void readFile(const string& inputFile);
 	void writeBinary(const string& inputFile);
 	bool readBinary(const string& inputFile);
