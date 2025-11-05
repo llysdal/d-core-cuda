@@ -289,7 +289,7 @@ degree getMValue(device_graph_pointers& g_p, device_maintenance_pointers& m_p, v
 	return M;
 }
 
-
+#ifdef PED_NOWARP
 __global__ void kmaxCalculateED(device_graph_pointers g_p, device_maintenance_pointers m_p, unsigned V) {
 	for (unsigned base = 0; base < V; base += THREAD_COUNT) {
 		vertex v = base + GLOBAL_THREAD_ID;
@@ -324,6 +324,50 @@ __global__ void kmaxCalculatePED(device_graph_pointers g_p, device_maintenance_p
 		}
 	}
 }
+#endif
+
+#ifdef PED_WARP
+__global__ void kmaxCalculateED(device_graph_pointers g_p, device_maintenance_pointers m_p, unsigned V) {
+	for (unsigned base = 0; base < V; base += WARP_COUNT) {
+		vertex v = base + GLOBAL_WARP_ID;
+		if (v >= V) break;
+
+		// m_p.ED[v] = 0;
+
+		offset start = g_p.in_neighbors_offset[v];
+		offset end = start + g_p.in_degrees[v];
+		for (offset o = start; o < end; o += WARP_SIZE) {
+			if (o + LANE_ID >= end) break;
+
+			vertex neighbor = g_p.in_neighbors[o + LANE_ID];
+			if (m_p.k_max[neighbor] >= m_p.k_max[v])
+				atomicAdd(m_p.ED + v, 1);
+		}
+	}
+}
+
+__global__ void kmaxCalculatePED(device_graph_pointers g_p, device_maintenance_pointers m_p, unsigned V) {
+	for (unsigned base = 0; base < V; base += WARP_COUNT) {
+		vertex v = base + GLOBAL_WARP_ID;
+		if (v >= V) break;
+
+		if (IS_MAIN_IN_WARP)
+			m_p.PED[v] = m_p.ED[v];
+		__syncwarp();
+		if (m_p.PED[v] == 0) continue;
+
+		offset start = g_p.in_neighbors_offset[v];
+		offset end = start + g_p.in_degrees[v];
+		for (offset o = start; o < end; o += WARP_SIZE) {
+			if (o + LANE_ID >= end) break;
+
+			vertex neighbor = g_p.in_neighbors[o + LANE_ID];
+			if (m_p.k_max[neighbor] == m_p.k_max[v] && m_p.ED[neighbor] <= m_p.k_max[v])
+				atomicSub(m_p.PED + v, 1);
+		}
+	}
+}
+#endif
 
 __global__ void kmaxFindUpperBound(device_graph_pointers g_p, device_maintenance_pointers m_p, unsigned V) {
 	__shared__ degree root_k_max;
@@ -383,6 +427,7 @@ __global__ void kmaxFindUpperBoundBatch(device_graph_pointers g_p, device_mainte
 	}
 }
 
+#ifdef HINDEX_NOWARP
 __global__ void kmaxRefineHIndex(device_graph_pointers g_p, device_maintenance_pointers m_p, unsigned V) {
 	__shared__ bool localFlag;
 
@@ -421,6 +466,57 @@ __global__ void kmaxRefineHIndex(device_graph_pointers g_p, device_maintenance_p
 	if (IS_MAIN_THREAD && localFlag)
 		*m_p.flag = true;
 }
+#endif
+
+#ifdef HINDEX_WARP
+__global__ void kmaxRefineHIndex(device_graph_pointers g_p, device_maintenance_pointers m_p, unsigned V) {
+	__shared__ bool localFlag;
+
+	if (IS_MAIN_THREAD) localFlag = false;
+	__syncthreads();
+
+	for (unsigned base = 0; base < V; base += WARP_COUNT) {
+		vertex v = base + GLOBAL_WARP_ID;
+		if (v >= V) break;
+
+		if (!m_p.compute[v]) continue;
+
+		offset histogramStart = g_p.in_neighbors_offset[v] + v;
+		offset histogramEnd = histogramStart + m_p.k_max[v];
+		for (offset o = histogramStart; o <= histogramEnd; o += WARP_SIZE)
+			if (o + LANE_ID <= histogramEnd)
+				m_p.histograms[o + LANE_ID] = 0;
+		__syncwarp();
+
+		offset start = g_p.in_neighbors_offset[v];
+		offset end = start + g_p.in_degrees[v];
+		for (offset o = start; o < end; o += WARP_SIZE) {
+			if (o + LANE_ID >= end) continue;
+			vertex neighbor = g_p.in_neighbors[o + LANE_ID];
+
+			atomicAdd(m_p.histograms + (histogramStart + min(m_p.k_max[v],m_p.k_max[neighbor])), 1);
+		}
+		__syncwarp();
+
+		// calculate h index
+		degree tmp_h_index = 0;
+		if (IS_MAIN_IN_WARP)
+			tmp_h_index = hOutIndex(m_p, v, g_p.in_neighbors_offset[v], m_p.k_max[v]);
+		__syncwarp();
+
+		if (IS_MAIN_IN_WARP) {
+			if (tmp_h_index < m_p.k_max[v]) {
+				m_p.k_max[v] = tmp_h_index;
+				localFlag = true;
+			}
+		}
+	}
+
+	__syncthreads();
+	if (IS_MAIN_THREAD && localFlag)
+		*m_p.flag = true;
+}
+#endif
 
 // we expect modified edges to already be set in device graph pointers!!
 // we also expect kmax on gpu to be "in place" as in, we wont load it from graphdata or place it into graphdata
@@ -509,7 +605,7 @@ void kmaxMaintenance(unsigned V, device_graph_pointers& g_p, device_maintenance_
 	#endif
 }
 
-
+#ifdef PED_NOWARP
 __global__ void kListCalculateED(device_graph_pointers g_p, device_maintenance_pointers m_p, unsigned V, degree k) {
 	for (unsigned base = 0; base < V; base += THREAD_COUNT) {
 		vertex v = base + GLOBAL_THREAD_ID;
@@ -555,18 +651,93 @@ __global__ void kListCalculatePED(device_graph_pointers g_p, device_maintenance_
 		}
 	}
 }
+// __global__ void kListCalculatePED(device_graph_pointers g_p, device_maintenance_pointers m_p, unsigned V, degree k) {
+// 	for (unsigned base = 0; base < V; base += THREAD_COUNT) {
+// 		vertex v = base + GLOBAL_THREAD_ID;
+// 		if (v >= V) break;
+//
+// 		m_p.PED[v] = 0;
+// 		if (m_p.k_max[v] < k) continue;
+//
+// 		offset start = g_p.out_neighbors_offset[v];
+// 		offset end = start + g_p.out_degrees[v];
+// 		for (offset o = start; o < end; ++o) {
+// 			vertex neighbor = g_p.out_neighbors[o];
+//
+// 			if (m_p.k_max[neighbor] < k) continue;
+//
+// 			if (m_p.l_max[neighbor] == m_p.l_max[v] && m_p.ED[neighbor] > m_p.l_max[v])
+// 				++m_p.PED[v];
+// 			if (m_p.l_max[neighbor] > m_p.l_max[v])
+// 				++m_p.PED[v];
+// 		}
+// 	}
+// }
+#endif
+
+#ifdef PED_WARP
+__global__ void kListCalculateED(device_graph_pointers g_p, device_maintenance_pointers m_p, unsigned V, degree k) {
+	for (unsigned base = 0; base < V; base += WARP_COUNT) {
+		vertex v = base + GLOBAL_WARP_ID;
+		if (v >= V) break;
+
+		// m_p.ED[v] = 0;
+		if (m_p.k_max[v] < k) continue;
+
+		offset start = g_p.out_neighbors_offset[v];
+		offset end = start + g_p.out_degrees[v];
+		for (offset o = start; o < end; o += WARP_SIZE) {
+			if (o + LANE_ID >= end) break;
+
+			vertex neighbor = g_p.out_neighbors[o + LANE_ID];
+
+			if (m_p.k_max[neighbor] < k) continue;
+
+			// we need to maintain some sort of k_adj_in/out list here?
+
+			if (m_p.l_max[neighbor] >= m_p.l_max[v])
+				atomicAdd(m_p.ED + v, 1);
+		}
+	}
+
+}
+
+__global__ void kListCalculatePED(device_graph_pointers g_p, device_maintenance_pointers m_p, unsigned V, degree k) {
+	for (unsigned base = 0; base < V; base += WARP_COUNT) {
+		vertex v = base + GLOBAL_WARP_ID;
+		if (v >= V) break;
+
+		m_p.PED[v] = m_p.ED[v];
+		if (m_p.PED[v] == 0) continue;
+		if (m_p.k_max[v] < k) continue;
+
+		offset start = g_p.out_neighbors_offset[v];
+		offset end = start + g_p.out_degrees[v];
+		for (offset o = start; o < end; o += WARP_SIZE) {
+			if (o + LANE_ID >= end) break;
+
+			vertex neighbor = g_p.out_neighbors[o + LANE_ID];
+
+			if (m_p.k_max[neighbor] < k) continue;
+
+			if (m_p.l_max[neighbor] == m_p.l_max[v] && m_p.ED[neighbor] <= m_p.l_max[v])
+				atomicSub(m_p.PED + v, 1);
+		}
+	}
+}
+#endif
 
 __global__ void kListFindUpperBound(device_graph_pointers g_p, device_maintenance_pointers m_p, unsigned V, degree k) {
-	// __shared__ degree root_l_max;
+	__shared__ degree root_l_max;
 
 	if (IS_MAIN_THREAD) {
-		// vertex edgeFrom = g_p.modified_edges[0];
-		// vertex edgeTo = g_p.modified_edges[1];
+		vertex edgeFrom = g_p.modified_edges[0];
+		vertex edgeTo = g_p.modified_edges[1];
 
-		// vertex root = edgeFrom;
-		// if (m_p.l_max[edgeTo] < m_p.l_max[edgeFrom])
-		// 	root = edgeTo;
-		// root_l_max = m_p.l_max[root];
+		vertex root = edgeFrom;
+		if (m_p.l_max[edgeTo] < m_p.l_max[edgeFrom])
+			root = edgeTo;
+		root_l_max = m_p.l_max[root];
 	}
 
 	__syncthreads();
@@ -576,10 +747,14 @@ __global__ void kListFindUpperBound(device_graph_pointers g_p, device_maintenanc
 		if (v >= V) break;
 
 		// if (m_p.k_max[v] >= k && m_p.l_max[v] <= root_l_max + 1 && m_p.PED[v] >= m_p.l_max[v]) {
-		// if (m_p.k_max[v] >= k && m_p.l_max[v] == root_l_max && m_p.PED[v] > m_p.l_max[v]) {
+		#ifdef USE_RESTRICTIVE_KLIST_COMPUTE_MASK
+		if (m_p.k_max[v] >= k && m_p.l_max[v] == root_l_max && m_p.PED[v] > m_p.l_max[v]) {
+		#endif
 		// if (m_p.k_max[v] >= k && m_p.PED[v] > m_p.l_max[v]) {
 		// if (m_p.k_max[v] >= k && m_p.l_max[v] == root_l_max) {
+		#ifndef USE_RESTRICTIVE_KLIST_COMPUTE_MASK
 		if (m_p.k_max[v] >= k) {	// todo: this is pathetic... its rly just redoing the decomposition...
+		#endif
 			// we only want to compute upper bound once
 			if (atomicTestAndSet(&m_p.compute[v])) {
 
@@ -605,7 +780,7 @@ __global__ void kListFindUpperBound(device_graph_pointers g_p, device_maintenanc
 
 __global__ void kListFindUpperBoundBatch(device_graph_pointers g_p, device_maintenance_pointers m_p, unsigned V, unsigned edges, degree k) {
 	__shared__ bool skip_edge;
-	// __shared__ degree root_l_max;
+	__shared__ degree root_l_max;
 
 	// each block works on an edge at a time :)
 	for (unsigned edgebase = 0; edgebase < edges; edgebase += BLOCK_COUNT) {
@@ -613,16 +788,16 @@ __global__ void kListFindUpperBoundBatch(device_graph_pointers g_p, device_maint
 		if (e >= edges) break;
 
 		if (IS_MAIN_THREAD) {
-			// vertex edgeFrom = g_p.modified_edges[e*2];
-			// vertex edgeTo = g_p.modified_edges[e*2+1];
+			vertex edgeFrom = g_p.modified_edges[e*2];
+			vertex edgeTo = g_p.modified_edges[e*2+1];
 
-			// skip_edge = (m_p.k_max[edgeFrom] < k || m_p.k_max[edgeTo] < k);	// is this right?!?
-			skip_edge = false;
+			skip_edge = (m_p.k_max[edgeFrom] < k || m_p.k_max[edgeTo] < k);	// todo: is this right for unbatched lmax maint?
+			// skip_edge = false;
 
-			// vertex root = edgeFrom;
-			// if (m_p.l_max[edgeTo] < m_p.l_max[edgeFrom])
-			// 	root = edgeTo;
-			// root_l_max = m_p.l_max[root];
+			vertex root = edgeFrom;
+			if (m_p.l_max[edgeTo] < m_p.l_max[edgeFrom])
+				root = edgeTo;
+			root_l_max = m_p.l_max[root];
 		}
 
 		__syncthreads();
@@ -633,10 +808,14 @@ __global__ void kListFindUpperBoundBatch(device_graph_pointers g_p, device_maint
 			if (v >= V) break;
 
 			// if (m_p.k_max[v] >= k && m_p.l_max[v] <= root_l_max + 1 && m_p.PED[v] >= m_p.l_max[v]) {
-			// if (m_p.k_max[v] >= k && m_p.l_max[v] == root_l_max && m_p.PED[v] > m_p.l_max[v]) {
+			#ifdef USE_RESTRICTIVE_KLIST_COMPUTE_MASK
+			if (m_p.k_max[v] >= k && m_p.l_max[v] == root_l_max && m_p.PED[v] > m_p.l_max[v]) {
+			#endif
 			// if (m_p.k_max[v] >= k && m_p.PED[v] > m_p.l_max[v]) {
 			// if (m_p.k_max[v] >= k && m_p.l_max[v] == root_l_max) {
+			#ifndef USE_RESTRICTIVE_KLIST_COMPUTE_MASK
 			if (m_p.k_max[v] >= k) {	// todo: this is pathetic... its rly just redoing the decomposition...
+			#endif
 				// we only want to compute upper bound once
 				if (atomicTestAndSet(&m_p.compute[v])) {
 
@@ -741,8 +920,8 @@ __global__ void kListRefineHIndex(device_graph_pointers g_p, device_maintenance_
 	for (unsigned base = 0; base < V; base += WARP_COUNT) {
 		// each warp has its own vertex
 		vertex v = base + GLOBAL_WARP_ID;
-
 		if (v >= V) break;
+
 		if (!m_p.compute[v]) continue;
 
 		// if (m_p.k_max[v] < k) continue; // not necessary since this vertex would never be computed anyway
@@ -750,9 +929,9 @@ __global__ void kListRefineHIndex(device_graph_pointers g_p, device_maintenance_
 		// make histogram bucket (V+E) initialized to zero
 		offset histogramStart = g_p.out_neighbors_offset[v] + v;
 		offset histogramEnd = histogramStart + m_p.l_max[v];
-		for (offset o = histogramStart; o <= histogramEnd; o += WARP_SIZE) {
-			if (o + LANE_ID <= histogramEnd) m_p.histograms[o + LANE_ID] = 0;
-		}
+		for (offset o = histogramStart; o <= histogramEnd; o += WARP_SIZE)
+			if (o + LANE_ID <= histogramEnd)
+				m_p.histograms[o + LANE_ID] = 0;
 		// if (IS_MAIN_IN_WARP) {
 		// 	for (offset o = histogramStart; o <= histogramEnd; ++o)
 		// 		m_p.histograms[o] = 0;
@@ -934,7 +1113,7 @@ vector<vector<pair<vertex, vertex>>> getEdgeBatches(vector<degree> kmaxes, const
 	// buckets
 	vector<vector<unsigned>> B(maxKmax + 1);
 	for (unsigned eid = 0; eid < edgesToBeInserted.size(); ++eid) {
-		B[maxKmax - edgeKmax[eid]].push_back(eid);
+		B[edgeKmax[eid]].push_back(eid);
 	}
 
 	for (auto& batch: B) { // each batch is a list of edges with the same kmax value
@@ -1155,11 +1334,12 @@ int main(int argc, char *argv[]) {
 	// generateGraph("../dataset/random", 10, 40);
 
 	// const string filename = "../dataset/digraph";
+	// const string filename = "../dataset/example2";
 	// const string filename = "../dataset/wiki_vote";
-	const string filename = "../dataset/wiki_vote-scramble"; //2.5 times speedup, due to better batching
+	// const string filename = "../dataset/wiki_vote-scramble"; //2.5 times speedup, due to better batching
 	// const string filename = "../dataset/email";
 	// const string filename = "../dataset/email-scramble";
-	// const string filename = "../dataset/live_journal";
+	const string filename = "../dataset/live_journal";
 
 	auto start = chrono::steady_clock::now();
 
@@ -1186,24 +1366,28 @@ int main(int argc, char *argv[]) {
 	unsigned maintenance_mem_size = allocateDeviceMaintenanceMemory(g, m_p);
 	cout << "Allocated memory\t\t" << calculateSize(graph_mem_size + accessory_mem_size + maintenance_mem_size) << "\tgraph: " << calculateSize(graph_mem_size) << " accessory: " << calculateSize(accessory_mem_size) << " maintenance: " << calculateSize(maintenance_mem_size) << endl;
 
-// #define SINGLE_INSERT
-#define SPEED_TEST
+#define SINGLE_INSERT
+// #define SPEED_TEST
 // #define STEP_TEST
 
 	// ***********************************************r*******************************
 #ifdef SINGLE_INSERT
 	assert(OFFSET_GAP >= 1);	// gapsize needs to be atleast 1;
 	// vector<pair<vertex, vertex>> edgeToAdd = {{0, 1}};	// digraph
+	// vector<pair<vertex, vertex>> edgeToAdd = {{1, 2}};	// example2
 	// vector<pair<vertex, vertex>> edgeToAdd = {{456, 316}};	// wiki_vote
 	// vector<pair<vertex, vertex>> edgeToAdd = {{1, 0}};	// email
 	// vector<pair<vertex, vertex>> edgeToAdd = {{50, 23}};	// email
-	vector<pair<vertex, vertex>> edgeToAdd = {{47, 46}};	// email
-	// vector<pair<vertex, vertex>> edgeToAdd = {{2, 1}};	// live_journal
+	// vector<pair<vertex, vertex>> edgeToAdd = {{47, 46}};	// email
+	vector<pair<vertex, vertex>> edgeToAdd = {{2, 1}};	// live_journal
 	// vector<pair<vertex, vertex>> edgeToAdd = {};
-	maintenance(g, g_p, m_p, edgeToAdd, true);
 
-	auto comp = checkDCore(g, g_p, a_p);
+	auto maintStart = chrono::steady_clock::now();
+	maintenance(g, g_p, m_p, edgeToAdd, true);
+	cout << "Maintenance total time \t\t" << chrono::duration_cast<chrono::milliseconds>(chrono::steady_clock::now() - maintStart).count() << "ms" << endl;
+
 	if (!SINGlE_INSERT_SKIP_CHECK) {
+		auto comp = checkDCore(g, g_p, a_p);
 		auto errors = 0;
 		for (vertex v = 0; v < g.V; ++v) {
 			if (g.kmaxes[v] != comp.first[v]) {
@@ -1231,6 +1415,7 @@ int main(int argc, char *argv[]) {
 	GraphGPU m_gpu(g, g_p);
 	// Graph m_gpu(g.V);
 	unsigned batchSize = 1000;
+	assert(MODIFIED_EDGES_BUFFER_SIZE >= batchSize*2);	// Ensure all the edges will fit in the buffer
 	unsigned edgesAdded = 0;
 	for (unsigned batchStart = 0; batchStart < g.E; batchStart += batchSize) {
 		vector<pair<vertex, vertex>> edgesToAdd;
@@ -1266,6 +1451,7 @@ int main(int argc, char *argv[]) {
 #ifdef STEP_TEST
 	Graph m(g.V);
 	unsigned batchSize = 1000;
+	assert(MODIFIED_EDGES_BUFFER_SIZE >= batchSize*2);	// Ensure all the edges will fit in the buffer
 	unsigned edgesAdded = 0;
 	unsigned errors = 0;
 	for (unsigned batchStart = 0; batchStart < g.E; batchStart += batchSize) {

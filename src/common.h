@@ -14,14 +14,20 @@ using namespace std;
 
 // #define HINDEX_NOWARP
 #define HINDEX_WARP	//10x speedup!! (tested with email single add 47->46) [3x speedup on livejournal 2->1]
+					//even more now that kmax also has warp!!
 
-#define SINGlE_INSERT_SKIP_CHECK	false	// check whether the single insert is correct
+// #define PED_NOWARP
+#define PED_WARP	//10x speedup for rly heavy batching :)
 
-#define FORCE_RECALCULATE_DCORE		false
-#define FORCE_REBUILD_GRAPH			true	// required for non in-place insertion
-#define OFFSET_GAP			0
+#define USE_RESTRICTIVE_KLIST_COMPUTE_MASK	// this only works for single insertions (until lmax batching is made :3)
 
-#define BLOCK_COUNT			1
+#define SINGlE_INSERT_SKIP_CHECK	true	// check whether the single insert is correct
+
+#define FORCE_RECALCULATE_DCORE		true
+#define FORCE_REBUILD_GRAPH			false	// required for non in-place insertion
+#define OFFSET_GAP			1
+
+#define BLOCK_COUNT			50
 #define BLOCK_DIM			1024
 #define WARPS_EACH_BLOCK	(BLOCK_DIM >> 5)
 #define THREAD_COUNT		(BLOCK_DIM * BLOCK_COUNT)
@@ -36,9 +42,9 @@ using namespace std;
 #define LANE_ID				(THREAD_ID & 31)
 #define IS_MAIN_IN_WARP		(LANE_ID == 0)
 
-#define BUFFER_SIZE		1'000'000
+#define BUFFER_SIZE			1'000'000
 
-#define MODIFIED_EDGES_BUFFER_SIZE 2'000
+#define MODIFIED_EDGES_BUFFER_SIZE 20'000
 
 
 typedef int degree;
