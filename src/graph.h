@@ -23,6 +23,8 @@ public:
 	explicit Graph(unsigned V);
 	void insertEdges(const vector<pair<vertex, vertex>>& edgesToBeInserted) override;
 	void insertEdgesInPlace(const vector<pair<vertex, vertex>>& edgesToBeInserted) override;
+	void deleteEdges(const vector<pair<vertex, vertex>>& edgesToBeDeleted) override;
+	void deleteEdgesInPlace(const vector<pair<vertex, vertex>>& edgesToBeDeleted) override;
 	void readFile(const string& inputFile);
 	void writeBinary(const string& inputFile);
 	bool readBinary(const string& inputFile);
