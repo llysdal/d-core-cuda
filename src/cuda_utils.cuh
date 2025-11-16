@@ -2,6 +2,21 @@
 #define D_CORE_CUDA_CUDA_UTILS_H
 #include "common.h"
 
+// for decomp
+__device__ inline vertex readVertexFromBuffer(vertex* buffer, unsigned loc) {
+	assert(loc < BUFFER_SIZE);
+	return buffer[loc];
+}
+__device__ inline void writeVertexToBuffer(vertex* buffer, unsigned loc, vertex val) {
+	assert(loc < BUFFER_SIZE);
+	buffer[loc] = val;
+}
+
+__device__ inline bool atomicTestAndSet(unsigned* adr) {
+	return !atomicCAS(adr, 0, 1);
+}
+
+// for maintenance
 __device__ degree hOutIndex(device_maintenance_pointers m_p, vertex v, offset o, degree upperBound) {
 	offset histogramStart = o + v;
 
@@ -22,6 +37,22 @@ __device__ degree hInIndex(device_maintenance_pointers m_p, vertex v, offset o, 
 		if (cnt >= k) return i;
 	}
 	return upperBound;
+}
+
+// for checking (not verified)
+__global__ void compareArray(unsigned* errors, degree* a, degree* b, unsigned V) {
+	if (IS_MAIN_THREAD)
+		*errors = 0;
+
+	__syncthreads();
+
+	for (unsigned base = 0; base < V; base += WARP_COUNT) {
+		vertex v = base + GLOBAL_WARP_ID;
+		if (v >= V) break;
+
+		if (a[v] != b[v])
+			atomicAdd(errors, 1);
+	}
 }
 
 

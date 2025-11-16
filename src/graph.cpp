@@ -8,6 +8,7 @@
 #include "./graph.h"
 
 #include <cassert>
+#include <map>
 
 
 using namespace std;
@@ -117,20 +118,42 @@ void Graph::deleteEdgesInPlace(const vector<pair<vertex, vertex>>& edgesToBeDele
 			sizeof(vertex)*(in_degrees[second] - (second_offset - in_neighbors_offset[second])));
 		in_degrees[second]--;
 	}
-	// for (vertex v = 0; v < V; v++) {
-	// 	cout << v << " in  offset: " << in_neighbors_offset[v] << " degree: " << in_degrees[v] << endl;
-	// 	cout << v << " out offset: " << out_neighbors_offset[v] << " degree: " << out_degrees[v] << endl;
-	// }
-	// cout << "in  neighbors: ";
-	// for (offset o = 0; o < in_neighbors_offset[V]; o++) {
-	// 	cout << in_neighbors[o] << " ";
-	// }
-	// cout << endl;
-	// cout << "out neighbors: ";
-	// for (offset o = 0; o < out_neighbors_offset[V]; o++) {
-	// 	cout << out_neighbors[o] << " ";
-	// }
-	// cout << endl;
+}
+
+pair<unsigned, vector<pair<vertex, vertex>>> pruneEmptyVertices(unsigned V, vector<pair<vertex, vertex>>& edges) {
+	// extract nodes with edges from node
+	auto inEdges = vector<vector<vertex>>(V);
+	auto outEdges = vector<vector<vertex>>(V);
+	for (auto &[first, second] : edges) {
+		outEdges[first].push_back(second);
+		inEdges[second].push_back(first);
+	}
+
+	// setup degrees
+	vector<degree> inDegrees(V);
+	vector<degree> outDegrees(V);
+	for (int i=0; i<V; i++) {
+		inDegrees[i] = inEdges[i].size();
+		outDegrees[i] = outEdges[i].size();
+	}
+
+	// map nonempty vertices
+	map<vertex, vertex> vertexMap;
+	vertex vertexCounter = 0;
+	for (vertex v=0; v<V; v++) {
+		if (inDegrees[v] > 0 || outDegrees[v] > 0) {
+			vertexMap[v] = vertexCounter++;
+		}
+	}
+
+	// transform edges
+	vector<pair<vertex, vertex>> newEdges;
+	newEdges.reserve(edges.size());
+	for (auto edge: edges) {
+		newEdges.push_back({vertexMap[edge.first], vertexMap[edge.second]});
+	}
+
+	return {vertexCounter, newEdges};
 }
 
 void Graph::readFile(const string& inputFile) {
@@ -160,6 +183,10 @@ void Graph::readFile(const string& inputFile) {
 	// done reading from the file
 	infile.close();
 	cout << "> Read in data..." << endl;
+
+	auto oldV = V;
+	tie(V, edges) = pruneEmptyVertices(V, edges);
+	cout << "> Trimmed away empty vertices... " << "(" << oldV-V << " vertices)" << endl;
 
 	// todo: we oughta trim the empty vertices away from the set here
 

@@ -8,7 +8,6 @@
 #include <ranges>
 #include <vector>
 #include "common.h"
-#include "common.cuh"
 #include "graph.h"
 #include "cuda_memory.h"
 #include "graph_gen.h"
@@ -858,17 +857,18 @@ __global__ void kListFindUpperBound(device_graph_pointers g_p, device_maintenanc
 				// m_p.l_max[v] = k_adj_out[v].size();
 
 				// // todo: this is probably rly expensive
-				unsigned k_adj_out_v = 0;
-				offset start = g_p.out_neighbors_offset[v];
-				offset end = start + g_p.out_degrees[v];
-				for (offset o = start; o < end; ++o) {
-					vertex neighbor = g_p.out_neighbors[o];
-
-					if (m_p.k_max[neighbor] < k) continue;
-
-					k_adj_out_v++;
-				}
-				m_p.l_max[v] = k_adj_out_v;
+				// unsigned k_adj_out_v = 0;
+				// offset start = g_p.out_neighbors_offset[v];
+				// offset end = start + g_p.out_degrees[v];
+				// for (offset o = start; o < end; ++o) {
+				// 	vertex neighbor = g_p.out_neighbors[o];
+				//
+				// 	if (m_p.k_max[neighbor] < k) continue;
+				//
+				// 	k_adj_out_v++;
+				// }
+				// m_p.l_max[v] = k_adj_out_v;
+				m_p.l_max[v] = m_p.PED[v];
 			}
 		}
 	}
@@ -1283,7 +1283,7 @@ void kListMaintenanceDelete(unsigned V, device_graph_pointers& g_p, device_maint
 }
 
 
-vector<vector<pair<vertex, vertex>>> getEdgeBatches(vector<degree> kmaxes, const vector<pair<vertex, vertex>>& edgesToBeInserted) {
+vector<vector<pair<vertex, vertex>>> getKmaxEdgeBatches(vector<degree>& kmaxes, const vector<pair<vertex, vertex>>& edgesToBeInserted) {
 	vector<vector<pair<vertex, vertex>>> batches;
 
 	degree maxKmax = 0;
@@ -1333,6 +1333,57 @@ vector<vector<pair<vertex, vertex>>> getEdgeBatches(vector<degree> kmaxes, const
 	return batches;
 }
 
+vector<vector<pair<vertex, vertex>>> getKListEdgeBatches(vector<vector<degree>>& lmaxes, degree k, const vector<pair<vertex, vertex>>& edgesToBeInserted) {
+	vector<vector<pair<vertex, vertex>>> batches;
+
+	degree maxLmax = 0;
+	vector<degree> edgeRoot(edgesToBeInserted.size());
+	vector<degree> edgeLmax(edgesToBeInserted.size());
+	for (unsigned eid = 0; eid < edgesToBeInserted.size(); ++eid) {
+		auto edge = edgesToBeInserted[eid];
+		vertex root = edge.second;
+		if (lmaxes[k][edge.first] > lmaxes[k][edge.second])
+			root = edge.first;
+		edgeRoot[eid] = root;
+		edgeLmax[eid] = lmaxes[k][root];
+		maxLmax = max(maxLmax, lmaxes[k][root]);
+	}
+	// buckets
+	vector<vector<unsigned>> B(maxLmax + 1);
+	for (unsigned eid = 0; eid < edgesToBeInserted.size(); ++eid) {
+		B[edgeLmax[eid]].push_back(eid);
+	}
+
+	for (auto& batch: B) { // each batch is a list of edges with the same lmax value
+		if (batch.empty()) continue;
+
+		bool flag = true;
+		while (flag) {
+			vector<pair<vertex, vertex>> candidateBatch;
+			vector<bool> v_ (lmaxes[k].size(), false);
+
+			for (auto it = batch.begin(); it != batch.end();) {
+				unsigned eid = *(it);
+				if (candidateBatch.empty() || !v_[edgeRoot[eid]]) {
+					candidateBatch.push_back(edgesToBeInserted[eid]);
+					v_[edgeRoot[eid]] = true;
+					it = batch.erase(it);
+				} else {
+					++it;
+				}
+			}
+
+			if (!candidateBatch.empty())
+				batches.push_back(candidateBatch);
+			else
+				flag = false;	// we're done
+		}
+	}
+
+	return batches;
+}
+
+
 
 template<typename F>
 chrono::duration<double, milli> funcTime(F&& func){
@@ -1345,7 +1396,7 @@ chrono::duration<double, milli> funcTime(F&& func){
 void maintenance(GraphInterface& g, device_graph_pointers& g_p, device_maintenance_pointers& m_p, vector<pair<vertex, vertex>>& modifiedEdges, bool isDelete = false, bool inPlace = false) {
 	chrono::duration<double, milli> insertTime{}, kmaxTime{}, klistTime{};
 
-	auto batches = getEdgeBatches(g.kmaxes, modifiedEdges);
+	auto batches = getKmaxEdgeBatches(g.kmaxes, modifiedEdges);
 	#ifdef PRINT_MAINTENANCE_STATS
 	cout << "batches: " << batches.size() << " ";
 	if (!batches.empty()) {
@@ -1430,13 +1481,17 @@ int main(int argc, char *argv[]) {
 	// generateGraph("../dataset/random", 10, 40);
 
 	// const string filename = "../dataset/digraph";
+	// const string filename = "../dataset/digraphWithEmpty";
 	// const string filename = "../dataset/example2";
+	// const string filename = "../dataset/congress";
 	// const string filename = "../dataset/wiki_vote";
 	// const string filename = "../dataset/wiki_vote-scramble"; //2.5 times speedup, due to better batching
-	// const string filename = "../dataset/email";
+	const string filename = "../dataset/email";
 	// const string filename = "../dataset/email-scramble";
+	// const string filename = "../dataset/amazon0601";
+	// const string filename = "../dataset/pokec";
 	// const string filename = "../dataset/live_journal";
-	const string filename = "../dataset/hollywood"; // 2156s load time lol, 554s decomp time, more than 50gb ram used
+	// const string filename = "../dataset/hollywood"; // 2156s load time lol, 554s decomp time (474s second time), more than 50gb ram used (23gb for this program probably), pruned 195347 vertices (8.96%)
 
 	auto start = chrono::steady_clock::now();
 
@@ -1464,7 +1519,7 @@ int main(int argc, char *argv[]) {
 	cout << "Allocated memory\t\t" << calculateSize(graph_mem_size + accessory_mem_size + maintenance_mem_size) << "\tgraph: " << calculateSize(graph_mem_size) << " accessory: " << calculateSize(accessory_mem_size) << " maintenance: " << calculateSize(maintenance_mem_size) << endl;
 
 // #define SINGLE_INSERT
-#define SINGLE_DELETE
+// #define SINGLE_DELETE
 // #define SPEED_TEST
 // #define STEP_TEST
 
@@ -1476,8 +1531,10 @@ int main(int argc, char *argv[]) {
 	// vector<pair<vertex, vertex>> edgeToAdd = {{456, 316}};	// wiki_vote
 	// vector<pair<vertex, vertex>> edgeToAdd = {{1, 0}};	// email
 	// vector<pair<vertex, vertex>> edgeToAdd = {{50, 23}};	// email
-	// vector<pair<vertex, vertex>> edgeToAdd = {{47, 46}};	// email
-	vector<pair<vertex, vertex>> edgeToAdd = {{2, 1}};	// live_journal
+	vector<pair<vertex, vertex>> edgeToAdd = {{47, 46}};	// email and live journal
+	// vector<pair<vertex, vertex>> edgeToAdd = {{2, 1}};	// live_journal
+	// vector<pair<vertex, vertex>> edgeToAdd = {{0, 8}};	// hollywood (checked, correct)
+	// vector<pair<vertex, vertex>> edgeToAdd = {{25142, 25214}};	// hollywood M+1=182
 	// vector<pair<vertex, vertex>> edgeToAdd = {};
 
 	auto maintStart = chrono::steady_clock::now();
@@ -1485,7 +1542,12 @@ int main(int argc, char *argv[]) {
 	cout << "Maintenance total time \t\t" << chrono::duration_cast<chrono::milliseconds>(chrono::steady_clock::now() - maintStart).count() << "ms" << endl;
 
 	if (!SINGlE_INSERT_SKIP_CHECK) {
+		cout << "Checking correctness.." << endl;
+		auto checkStart = chrono::steady_clock::now();
 		auto comp = checkDCore(g, g_p, a_p);
+		cout << "Comparison DCore generated\t" << chrono::duration_cast<chrono::milliseconds>(chrono::steady_clock::now() - checkStart).count() << "ms" << endl;
+
+		cout << "Checking kmax... ";
 		auto errors = 0;
 		for (vertex v = 0; v < g.V; ++v) {
 			if (g.kmaxes[v] != comp.first[v]) {
@@ -1493,9 +1555,9 @@ int main(int argc, char *argv[]) {
 				errors++;
 			}
 		}
-		cout << "kmax check done - found " << errors << " errors" << endl;
+		cout << "found " << errors << " errors" << endl;
 		errors = 0;
-		// cout << "skipping lmax" << endl;
+		cout << "Checking lmax... ";
 		for (degree k = 0; k < g.lmaxes.size(); ++k) {
 			for (vertex v = 0; v < g.V; ++v) {
 				if (g.lmaxes[k][v] != comp.second[k][v]) {
@@ -1504,7 +1566,7 @@ int main(int argc, char *argv[]) {
 				}
 			}
 		}
-		cout << "lmax check done - found " << errors << " errors" << endl;
+		cout << "found " << errors << " errors" << endl;
 	}
 #endif
 
@@ -1523,7 +1585,12 @@ int main(int argc, char *argv[]) {
 		cout << "Maintenance total time \t\t" << chrono::duration_cast<chrono::milliseconds>(chrono::steady_clock::now() - maintStart).count() << "ms" << endl;
 
 		if (!SINGlE_INSERT_SKIP_CHECK) {
+			cout << "Checking correctness.." << endl;
+			auto checkStart = chrono::steady_clock::now();
 			auto comp = checkDCore(g, g_p, a_p);
+			cout << "Comparison DCore generated\t" << chrono::duration_cast<chrono::milliseconds>(chrono::steady_clock::now() - checkStart).count() << "ms" << endl;
+
+			cout << "Checking kmax... ";
 			auto errors = 0;
 			for (vertex v = 0; v < g.V; ++v) {
 				if (g.kmaxes[v] != comp.first[v]) {
@@ -1531,9 +1598,9 @@ int main(int argc, char *argv[]) {
 					errors++;
 				}
 			}
-			cout << "kmax check done - found " << errors << " errors" << endl;
+			cout << "found " << errors << " errors" << endl;
 			errors = 0;
-			// cout << "skipping lmax" << endl;
+			cout << "Checking lmax... ";
 			for (degree k = 0; k < g.lmaxes.size(); ++k) {
 				for (vertex v = 0; v < g.V; ++v) {
 					if (g.lmaxes[k][v] != comp.second[k][v]) {
@@ -1542,7 +1609,7 @@ int main(int argc, char *argv[]) {
 					}
 				}
 			}
-			cout << "lmax check done - found " << errors << " errors" << endl;
+			cout << "found " << errors << " errors" << endl;
 		}
 #endif
 
