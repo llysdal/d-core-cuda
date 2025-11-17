@@ -2,6 +2,7 @@
 #define CUDA_PLAYGROUND_GRAPH_H
 
 #include "common.h"
+#include <set>
 #include <string>
 
 using namespace std;
@@ -12,6 +13,7 @@ public:
 	vector<vector<vertex>> inEdges;
 	vector<vector<vertex>> outEdges;
 	vector<pair<vertex, vertex>> edges;
+	set<vertex> inserted;
 	vertex* in_neighbors;
 	vertex* out_neighbors;
 	offset* in_neighbors_offset;
@@ -21,6 +23,7 @@ public:
 	Graph();
 	explicit Graph(const string& inputFile);
 	explicit Graph(unsigned V);
+	pair<vertex, vertex> getRandomInsertEdge() override;
 	void insertEdges(const vector<pair<vertex, vertex>>& edgesToBeInserted) override;
 	void insertEdgesInPlace(const vector<pair<vertex, vertex>>& edgesToBeInserted) override;
 	void deleteEdges(const vector<pair<vertex, vertex>>& edgesToBeDeleted) override;

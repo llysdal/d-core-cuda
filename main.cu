@@ -802,7 +802,9 @@ __global__ void kListCalculatePED(device_graph_pointers g_p, device_maintenance_
 		vertex v = base + GLOBAL_WARP_ID;
 		if (v >= V) break;
 
-		m_p.PED[v] = m_p.ED[v];
+		if (IS_MAIN_IN_WARP)
+			m_p.PED[v] = m_p.ED[v];
+		__syncwarp();
 		if (m_p.PED[v] == 0) continue;
 		if (m_p.k_max[v] < k) continue;
 
@@ -853,22 +855,19 @@ __global__ void kListFindUpperBound(device_graph_pointers g_p, device_maintenanc
 			// we only want to compute upper bound once
 			if (atomicTestAndSet(&m_p.compute[v])) {
 
-				// m_p.l_max[v] = g_p.out_degrees[v];
-				// m_p.l_max[v] = k_adj_out[v].size();
-
 				// // todo: this is probably rly expensive
-				// unsigned k_adj_out_v = 0;
-				// offset start = g_p.out_neighbors_offset[v];
-				// offset end = start + g_p.out_degrees[v];
-				// for (offset o = start; o < end; ++o) {
-				// 	vertex neighbor = g_p.out_neighbors[o];
-				//
-				// 	if (m_p.k_max[neighbor] < k) continue;
-				//
-				// 	k_adj_out_v++;
-				// }
-				// m_p.l_max[v] = k_adj_out_v;
-				m_p.l_max[v] = m_p.PED[v];
+				unsigned k_adj_out_v = 0;
+				offset start = g_p.out_neighbors_offset[v];
+				offset end = start + g_p.out_degrees[v];
+				for (offset o = start; o < end; ++o) {
+					vertex neighbor = g_p.out_neighbors[o];
+
+					if (m_p.k_max[neighbor] < k) continue;
+
+					k_adj_out_v++;
+				}
+				m_p.l_max[v] = k_adj_out_v;
+				// m_p.l_max[v] = m_p.PED[v];
 			}
 		}
 	}
@@ -1483,10 +1482,10 @@ int main(int argc, char *argv[]) {
 	// const string filename = "../dataset/digraph";
 	// const string filename = "../dataset/digraphWithEmpty";
 	// const string filename = "../dataset/example2";
-	// const string filename = "../dataset/congress";
+	const string filename = "../dataset/congress";
 	// const string filename = "../dataset/wiki_vote";
 	// const string filename = "../dataset/wiki_vote-scramble"; //2.5 times speedup, due to better batching
-	const string filename = "../dataset/email";
+	// const string filename = "../dataset/email";
 	// const string filename = "../dataset/email-scramble";
 	// const string filename = "../dataset/amazon0601";
 	// const string filename = "../dataset/pokec";
@@ -1520,6 +1519,7 @@ int main(int argc, char *argv[]) {
 
 // #define SINGLE_INSERT
 // #define SINGLE_DELETE
+#define SINGLE_INSERT_RANDOM
 // #define SPEED_TEST
 // #define STEP_TEST
 
@@ -1611,6 +1611,62 @@ int main(int argc, char *argv[]) {
 			}
 			cout << "found " << errors << " errors" << endl;
 		}
+#endif
+
+	// ***********************************************r*******************************
+#ifdef SINGLE_INSERT_RANDOM
+	assert(OFFSET_GAP >= 1);	// gapsize needs to be atleast 1;
+	unsigned inserts = 10;
+	cout << "Doing " << inserts << " random insertions..." << endl;
+
+	vector<pair<vertex, vertex>> manual = {{6,0},{7,1},{5,3}};
+
+	auto maintTotalStart = chrono::steady_clock::now();
+	auto totalErrors = 0;
+	for (unsigned i = 0; i < inserts; ++i) {
+		auto edgeToAdd = vector<pair<vertex, vertex>>();
+		edgeToAdd.push_back(g.getRandomInsertEdge());
+		// edgeToAdd.push_back(manual[i]);
+		cout << "Inserting " << edgeToAdd[0].first << "->" << edgeToAdd[0].second << endl;
+
+		auto maintStart = chrono::steady_clock::now();
+		maintenance(g, g_p, m_p, edgeToAdd, false, true);
+		cout << "Maintenance step time \t\t" << chrono::duration_cast<chrono::milliseconds>(chrono::steady_clock::now() - maintStart).count() << "ms" << endl;
+
+		if (!SINGlE_INSERT_SKIP_CHECK) {
+			cout << "Checking correctness.." << endl;
+			auto checkStart = chrono::steady_clock::now();
+			auto comp = checkDCore(g, g_p, a_p);
+			cout << "Comparison DCore generated\t" << chrono::duration_cast<chrono::milliseconds>(chrono::steady_clock::now() - checkStart).count() << "ms" << endl;
+
+			cout << "Checking kmax... ";
+			auto errors = 0;
+			for (vertex v = 0; v < g.V; ++v) {
+				if (g.kmaxes[v] != comp.first[v]) {
+					cout << "mismatching kmax["<<v<<"] " << g.kmaxes[v] << "!=" << comp.first[v] << endl;
+					errors++;
+				}
+			}
+			cout << "found " << errors << " errors" << endl;
+			totalErrors += errors;
+			errors = 0;
+			cout << "Checking lmax... ";
+			for (degree k = 0; k < g.lmaxes.size(); ++k) {
+				for (vertex v = 0; v < g.V; ++v) {
+					if (g.lmaxes[k][v] != comp.second[k][v]) {
+						cout << "mismatching lmax["<<k<<"]["<<v<<"] " << g.lmaxes[k][v] << "!=" << comp.second[k][v] << endl;
+						errors++;
+					}
+				}
+			}
+			cout << "found " << errors << " errors" << endl;
+			totalErrors += errors;
+		}
+	}
+	cout << "Maintenance total time \t\t" << chrono::duration_cast<chrono::milliseconds>(chrono::steady_clock::now() - maintTotalStart).count() << "ms" << endl;
+	cout << "found " << totalErrors << " errors" << endl;
+
+
 #endif
 
 	// ***********************************************r*******************************

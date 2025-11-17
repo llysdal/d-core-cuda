@@ -318,7 +318,53 @@ bool Graph::readBinary(const string& inputFile) {
 	return false;
 }
 
-Graph::Graph(const string& inputFile){
+pair<vertex, vertex> Graph::getRandomInsertEdge() {
+	assert(OFFSET_GAP > 0);	//we must have an inplace offset gap to generate random new edges
+
+	vertex from = -1;
+	vertex to = -1;
+	while (inserted.contains(from)) {
+		from = rand() % V;
+		if (out_degrees[from] >= V)
+			from = -1;
+
+		auto attempts = 0;
+		while (from == to || inserted.contains(to)) {
+			to = rand() % V;
+			if (in_degrees[to] >= V) {
+				to = -1;
+				continue;
+			}
+			auto start = out_neighbors_offset[from];
+			auto end = out_neighbors_offset[from] + out_degrees[from];
+			auto isPossible = true;
+			for (auto v = start; v < end; v++) {
+				if (out_neighbors[v] == to)
+					isPossible = false;
+			}
+			if (!isPossible)
+				to = -1;
+
+			attempts++;
+			if (attempts >= 100) {
+				from = -1;
+				break;
+			}
+		}
+	}
+
+
+
+	inserted.emplace(from);
+	inserted.emplace(to);
+
+	return {from, to};
+}
+
+Graph::Graph(const string& inputFile) {
+	srand(time(nullptr));
+	inserted.emplace(-1);
+
 	cout << "gapsize = " << OFFSET_GAP << endl;
 	if (!FORCE_REBUILD_GRAPH && readBinary(inputFile)) return;
 

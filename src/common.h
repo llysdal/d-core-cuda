@@ -21,7 +21,7 @@ using namespace std;
 
 #define USE_RESTRICTIVE_KLIST_COMPUTE_MASK	// this only works for single insertions (until lmax batching is made :3)
 
-#define SINGlE_INSERT_SKIP_CHECK	true	// check whether the single insert/delete is correct
+#define SINGlE_INSERT_SKIP_CHECK	false	// check whether the single insert/delete is correct
 
 #define FORCE_RECALCULATE_DCORE		false
 #define FORCE_REBUILD_GRAPH			false	// required for non in-place insertion
@@ -61,6 +61,7 @@ public:
 	vector<vector<degree>> lmaxes;
 	virtual void insertEdges(const vector<pair<vertex, vertex>>& edgesToBeInserted) = 0;
 	virtual void insertEdgesInPlace(const vector<pair<vertex, vertex>>& edgesToBeInserted) = 0;
+	virtual pair<vertex, vertex> getRandomInsertEdge() = 0;
 	virtual void deleteEdges(const vector<pair<vertex, vertex>>& edgesToBeDeleted) = 0;
 	virtual void deleteEdgesInPlace(const vector<pair<vertex, vertex>>& edgesToBeDeleted) = 0;
 	virtual ~GraphInterface() {}
