@@ -6,6 +6,7 @@
 #include <cinttypes>
 #include <omp.h>
 #include <vector>
+#include <map>
 
 using namespace std;
 
@@ -19,9 +20,9 @@ using namespace std;
 // #define PED_NOWARP
 #define PED_WARP	//10x speedup for rly heavy batching :)
 
-#define USE_RESTRICTIVE_KLIST_COMPUTE_MASK	// this only works for single insertions (until lmax batching is made :3)
+#define USE_RESTRICTIVE_KLIST_COMPUTE_MASK	// this doesnt seem to always work..
 
-#define SINGlE_INSERT_SKIP_CHECK	false	// check whether the single insert/delete is correct
+// #define SINGlE_INSERT_CHECK		// check whether the single insert/delete is correct
 
 #define FORCE_RECALCULATE_DCORE		false
 #define FORCE_REBUILD_GRAPH			false	// required for non in-place insertion
@@ -40,6 +41,7 @@ using namespace std;
 #define WARP_ID				(THREAD_ID >> 5)
 #define GLOBAL_WARP_ID		(BLOCK_ID * WARPS_EACH_BLOCK + WARP_ID)
 #define LANE_ID				(THREAD_ID & 31)
+#define IS_MAIN_WARP		(WARP_ID == 0)
 #define IS_MAIN_IN_WARP		(LANE_ID == 0)
 
 #define BUFFER_SIZE			1'000'000
@@ -64,6 +66,7 @@ public:
 	virtual pair<vertex, vertex> getRandomInsertEdge() = 0;
 	virtual void deleteEdges(const vector<pair<vertex, vertex>>& edgesToBeDeleted) = 0;
 	virtual void deleteEdgesInPlace(const vector<pair<vertex, vertex>>& edgesToBeDeleted) = 0;
+	virtual pair<vertex, vertex> getRandomDeleteEdge() = 0;
 	virtual ~GraphInterface() {}
 };
 

@@ -45,6 +45,11 @@ void refreshGraphOnGPU(Graph& g, device_graph_pointers& g_p) {
 	cudaMemcpy(g_p.out_degrees, g.out_degrees, g.V * sizeof(offset), cudaMemcpyHostToDevice);
 }
 
+void refreshGraphOnGPU(unsigned V, device_graph_pointers& g_p) {
+	cudaMemcpy(g_p.in_degrees, g_p.in_degrees_orig, V * sizeof(offset), cudaMemcpyDeviceToDevice);
+	cudaMemcpy(g_p.out_degrees, g_p.out_degrees_orig, V * sizeof(offset), cudaMemcpyDeviceToDevice);
+}
+
 
 // Accessory memory (used for peeling)
 unsigned allocateDeviceAccessoryMemory(Graph& g, device_accessory_pointers& a_p) {

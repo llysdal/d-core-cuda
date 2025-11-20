@@ -9,16 +9,16 @@ GraphGPU::GraphGPU() {
 
 GraphGPU::GraphGPU(Graph& g, device_graph_pointers dgp) {
 	V = g.V;
-	E = 0;
+	E = g.E;
 
-	kmaxes = vector<degree>(V);
-	lmaxes = vector<vector<degree>>();
-	// for (int i = 0; i < g.kmax; i++)
-		lmaxes.emplace_back(vector<degree>(V));
+	kmax = g.kmax;
+	lmax = g.lmax;
+	kmaxes = g.kmaxes;
+	lmaxes = g.lmaxes;
 
 	g_p = dgp;
-	cudaMemset(g_p.in_degrees, 0, g.V * sizeof(vertex));
-	cudaMemset(g_p.out_degrees, 0, g.V * sizeof(vertex));
+	// cudaMemset(g_p.in_degrees, 0, g.V * sizeof(vertex));
+	// cudaMemset(g_p.out_degrees, 0, g.V * sizeof(vertex));
 
 	// offset* neighbors_offset = new offset[V+1];
 	// neighbors_offset[0] = 0;
@@ -27,24 +27,24 @@ GraphGPU::GraphGPU(Graph& g, device_graph_pointers dgp) {
 	// cudaMemcpy(g_p.in_neighbors_offset, neighbors_offset, (g.V + 1) * sizeof(offset), cudaMemcpyHostToDevice);
 	// cudaMemcpy(g_p.out_neighbors_offset, neighbors_offset, (g.V + 1) * sizeof(offset), cudaMemcpyHostToDevice);
 
-
-	cudaMemcpy(g_p.in_neighbors_offset, g.in_neighbors_offset, (g.V + 1) * sizeof(offset), cudaMemcpyHostToDevice);
-	cudaMemcpy(g_p.out_neighbors_offset, g.out_neighbors_offset, (g.V + 1) * sizeof(offset), cudaMemcpyHostToDevice);
+	// cudaMemcpy(g_p.in_neighbors_offset, g.in_neighbors_offset, (g.V + 1) * sizeof(offset), cudaMemcpyHostToDevice);
+	// cudaMemcpy(g_p.out_neighbors_offset, g.out_neighbors_offset, (g.V + 1) * sizeof(offset), cudaMemcpyHostToDevice);
 }
 
 __global__ void graphInsertEdges(device_graph_pointers g_p, unsigned edgeAmount) {
-	unsigned global_threadIdx = blockIdx.x * blockDim.x + threadIdx.x;
 	for (unsigned base = 0; base < edgeAmount; base += THREAD_COUNT) {
-		unsigned e = base + global_threadIdx;
+		unsigned e = base + GLOBAL_THREAD_ID;
 		if (e >= edgeAmount) break;
 
 		vertex edgeFrom = g_p.modified_edges[e*2];
 		vertex edgeTo = g_p.modified_edges[e*2+1];
 
 		offset indeg = atomicAdd(g_p.in_degrees + edgeTo, 1);
+		atomicAdd(g_p.in_degrees_orig + edgeTo, 1);
 		g_p.in_neighbors[g_p.in_neighbors_offset[edgeTo] + indeg] = edgeFrom;
 
 		offset outdeg = atomicAdd(g_p.out_degrees + edgeFrom, 1);
+		atomicAdd(g_p.out_degrees_orig + edgeFrom, 1);
 		g_p.out_neighbors[g_p.out_neighbors_offset[edgeFrom] + outdeg] = edgeTo;
 	}
 }

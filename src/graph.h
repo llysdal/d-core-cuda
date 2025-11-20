@@ -24,6 +24,7 @@ public:
 	explicit Graph(const string& inputFile);
 	explicit Graph(unsigned V);
 	pair<vertex, vertex> getRandomInsertEdge() override;
+	pair<vertex, vertex> getRandomDeleteEdge() override;
 	void insertEdges(const vector<pair<vertex, vertex>>& edgesToBeInserted) override;
 	void insertEdgesInPlace(const vector<pair<vertex, vertex>>& edgesToBeInserted) override;
 	void deleteEdges(const vector<pair<vertex, vertex>>& edgesToBeDeleted) override;

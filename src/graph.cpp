@@ -361,6 +361,17 @@ pair<vertex, vertex> Graph::getRandomInsertEdge() {
 	return {from, to};
 }
 
+pair<vertex, vertex> Graph::getRandomDeleteEdge() {
+	vertex from = -1;
+	while (from == -1 || out_degrees[from] < 1) {
+		from = rand() % V;
+	}
+	offset toLoc = rand() % out_degrees[from];
+	vertex to = out_neighbors[out_neighbors_offset[from] + toLoc];
+
+	return {from, to};
+}
+
 Graph::Graph(const string& inputFile) {
 	srand(time(nullptr));
 	inserted.emplace(-1);

@@ -140,20 +140,20 @@ __global__ void process(device_graph_pointers g_p, device_accessory_pointers a_p
 	}
 }
 
-pair<degree, vector<degree>> KList(Graph& g, device_graph_pointers& g_p, device_accessory_pointers& a_p, unsigned k) {
+pair<degree, vector<degree>> KList(unsigned V, device_graph_pointers& g_p, device_accessory_pointers& a_p, unsigned k) {
 	unsigned level = 0;
 	unsigned count = 0;
 
 	// resetting GPU variables
 	cudaMemset(a_p.global_count, 0, sizeof(unsigned));
-	cudaMemset(a_p.visited, 0, g.V * sizeof(unsigned));
-	cudaMemset(a_p.core, -1, g.V * sizeof(degree));
+	cudaMemset(a_p.visited, 0, V * sizeof(unsigned));
+	cudaMemset(a_p.core, -1, V * sizeof(degree));
 
 	// algo time
-	while (count < g.V) {
+	while (count < V) {
 		cudaMemset(a_p.bufferTails, 0, BLOCK_COUNT * sizeof(unsigned));
 
-		scan<<<BLOCK_COUNT, BLOCK_DIM>>>(g_p, a_p, k, level, g.V);
+		scan<<<BLOCK_COUNT, BLOCK_DIM>>>(g_p, a_p, k, level, V);
 		process<<<BLOCK_COUNT, BLOCK_DIM>>>(g_p, a_p, k, level);
 
 		cudaMemcpy(&count, a_p.global_count, sizeof(unsigned), cudaMemcpyDeviceToHost);
@@ -161,8 +161,8 @@ pair<degree, vector<degree>> KList(Graph& g, device_graph_pointers& g_p, device_
 	}
 
 	// getting result from GPU
-	vector<degree> res(g.V);
-	cudaMemcpy(res.data(), a_p.core, g.V * sizeof(degree), cudaMemcpyDeviceToHost);
+	vector<degree> res(V);
+	cudaMemcpy(res.data(), a_p.core, V * sizeof(degree), cudaMemcpyDeviceToHost);
 
 	return {level - 1, res};
 }
@@ -186,7 +186,7 @@ vector<vector<degree>> dcore(Graph &g) {
 // ***** calculating k-max *****
 	auto startKmax = chrono::steady_clock::now();
 	swapInOut(g_p); // do a flip!! (we're calculating the 0 l-list)
-	auto [kmax, kmaxes] = KList(g, g_p, a_p, 0);
+	auto [kmax, kmaxes] = KList(g.V, g_p, a_p, 0);
 	swapInOut(g_p); // let's fix the mess we made...
 
 	auto endKmax = chrono::steady_clock::now();
@@ -202,7 +202,7 @@ vector<vector<degree>> dcore(Graph &g) {
 	for (unsigned k = 0; k <= kmax; ++k) {
 		refreshGraphOnGPU(g, g_p);	// degrees will be wrecked from previous calculation
 
-		auto [l, core] = KList(g, g_p, a_p, k);
+		auto [l, core] = KList(g.V, g_p, a_p, k);
 		lmax = max(lmax, l);
 		res.push_back(core);
 	}
@@ -226,7 +226,7 @@ vector<degree> checkKmax(Graph &g, device_graph_pointers& g_p, device_accessory_
 
 	// ***** calculating k-max *****
 	swapInOut(g_p); // do a flip!! (we're calculating the 0 l-list)
-	auto [_, kmaxes] = KList(g, g_p, a_p, 0);
+	auto [_, kmaxes] = KList(g.V, g_p, a_p, 0);
 	swapInOut(g_p); // let's fix the mess we made...
 
 	return kmaxes;
@@ -238,13 +238,13 @@ pair<vector<degree>, vector<vector<degree>>> checkDCore(Graph &g, device_graph_p
 
 	// ***** calculating k-max *****
 	swapInOut(g_p); // do a flip!! (we're calculating the 0 l-list)
-	auto [kmax, kmaxes] = KList(g, g_p, a_p, 0);
+	auto [kmax, kmaxes] = KList(g.V, g_p, a_p, 0);
 	swapInOut(g_p); // let's fix the mess we made...
 
 	vector<vector<degree>> lmaxes;
 	for (unsigned k = 0; k <= kmax; ++k) {
 		refreshGraphOnGPU(g, g_p);	// degrees will be wrecked from previous calculation
-		auto [_, core] = KList(g, g_p, a_p, k);
+		auto [_, core] = KList(g.V, g_p, a_p, k);
 		lmaxes.push_back(core);
 	}
 
@@ -252,19 +252,52 @@ pair<vector<degree>, vector<vector<degree>>> checkDCore(Graph &g, device_graph_p
 }
 
 
+// __global__ void findMaxKmax(device_maintenance_pointers m_p, unsigned V) {
+// 	__shared__ degree warp_results[32];
+//
+// 	for (vertex base = 0; base < V; base += THREAD_COUNT) {
+// 		vertex v = base + GLOBAL_THREAD_ID;
+// 		degree d = 0;
+// 		if (v < V) d = m_p.k_max[v];
+//
+// 		for (int offset = 16; offset > 0; offset /= 2) {
+// 			degree other = __shfl_down_sync(0xffffffff, d, offset);
+// 			d = max(d, other);
+// 		}
+//
+// 		if (IS_MAIN_IN_WARP)
+// 			warp_results[WARP_ID] = d;
+//
+// 		__syncthreads();
+//
+// 		if (IS_MAIN_WARP) {
+// 			d = warp_results[LANE_ID];
+//
+// 			for (int offset = 16; offset > 0; offset /= 2) {
+// 				degree other = __shfl_down_sync(0xffffffff, d, offset);
+// 				d = max(d, other);
+// 			}
+//
+// 		}
+//
+// 		if (IS_MAIN_THREAD)
+// 			atomicMax(m_p.k_max_max, d);
+// 	}
+// }
 
 __global__ void findMaxKmax(device_maintenance_pointers m_p, unsigned V) {
-	unsigned global_threadIdx = blockIdx.x * blockDim.x + threadIdx.x;
 	for (unsigned base = 0; base < V; base += THREAD_COUNT) {
-		vertex v = base + global_threadIdx;
+		vertex v = base + GLOBAL_THREAD_ID;
 		if (v >= V) break;
 
 		atomicMax(m_p.k_max_max, m_p.k_max[v]);
 	}
 }
 void getMaxKmax(degree& kmax, unsigned V, device_maintenance_pointers& m_p) {
+	cudaMemset(m_p.k_max_max, 0, sizeof(degree));
 	findMaxKmax<<<BLOCK_COUNT, BLOCK_DIM>>>(m_p, V);
 	cudaMemcpy(&kmax, m_p.k_max_max, sizeof(degree), cudaMemcpyDeviceToHost);
+	kmax = 27;
 }
 
 __global__ void findMValue(device_graph_pointers g_p, device_maintenance_pointers m_p, unsigned edges) {
@@ -282,6 +315,7 @@ __global__ void findMValue(device_graph_pointers g_p, device_maintenance_pointer
 	}
 }
 degree getMValue(device_graph_pointers& g_p, device_maintenance_pointers& m_p, vector<pair<vertex, vertex>>& modifiedEdges) {
+	cudaMemset(m_p.m_value, 0, sizeof(degree));
 	findMValue<<<BLOCK_COUNT, BLOCK_DIM>>>(g_p, m_p, modifiedEdges.size());
 	degree M = 0;
 	cudaMemcpy(&M, m_p.m_value, sizeof(degree), cudaMemcpyDeviceToHost);
@@ -524,6 +558,14 @@ void kmaxMaintenance(unsigned V, device_graph_pointers& g_p, device_maintenance_
 	// move graph to GPU
 	// moveGraphToDevice(g, g_p); // todo: this shouldnt be here for final maintenance
 
+	if (modifiedEdges.size() == 1) {
+		// sometimes we get kmax maintenance for free, since if this holds, itll stay the same
+		degree fromKmax, toKmax;
+		cudaMemcpy(&fromKmax, m_p.k_max + modifiedEdges[0].first, sizeof(degree), cudaMemcpyDeviceToHost);
+		cudaMemcpy(&toKmax, m_p.k_max + modifiedEdges[0].second, sizeof(degree), cudaMemcpyDeviceToHost);
+		if (fromKmax < toKmax) return;
+	}
+
 	#ifdef PRINT_STEPS
 	cout << "K MAX for batch {";
 	for (auto& edge: modifiedEdges) {
@@ -623,9 +665,10 @@ __global__ void kmaxFindUpperBoundDelete(device_graph_pointers g_p, device_maint
 		vertex v = base + GLOBAL_THREAD_ID;
 		if (v >= V) break;
 
-		if (m_p.k_max[v] == root_k_max && m_p.ED[v] <= m_p.k_max[v]) {
+		// if (m_p.k_max[v] == root_k_max && m_p.ED[v] <= m_p.k_max[v]) {
+		if (m_p.k_max[v] == root_k_max && m_p.ED[v] > m_p.k_max[v]) {
 			m_p.compute[v] = true;
-			if (m_p.k_max[v] > 0) m_p.k_max[v]++;
+			// if (m_p.k_max[v] > 0) m_p.k_max[v];
 		}
 	}
 }
@@ -824,7 +867,7 @@ __global__ void kListCalculatePED(device_graph_pointers g_p, device_maintenance_
 }
 #endif
 
-__global__ void kListFindUpperBound(device_graph_pointers g_p, device_maintenance_pointers m_p, unsigned V, degree k) {
+__global__ void kListFindUpperBound(device_graph_pointers g_p, device_maintenance_pointers m_p, unsigned V, degree k, bool doNaively) {
 	__shared__ degree root_l_max;
 
 	if (IS_MAIN_THREAD) {
@@ -845,7 +888,8 @@ __global__ void kListFindUpperBound(device_graph_pointers g_p, device_maintenanc
 
 		// if (m_p.k_max[v] >= k && m_p.l_max[v] <= root_l_max + 1 && m_p.PED[v] >= m_p.l_max[v]) {
 		#ifdef USE_RESTRICTIVE_KLIST_COMPUTE_MASK
-		if (m_p.k_max[v] >= k && m_p.l_max[v] == root_l_max && m_p.PED[v] > m_p.l_max[v]) {
+		if (!doNaively && (m_p.k_max[v] >= k && m_p.l_max[v] == root_l_max && m_p.PED[v] > m_p.l_max[v])
+		  || doNaively && (m_p.k_max[v] >= k)) {
 		#endif
 		// if (m_p.k_max[v] >= k && m_p.PED[v] > m_p.l_max[v]) {
 		// if (m_p.k_max[v] >= k && m_p.l_max[v] == root_l_max) {
@@ -1086,7 +1130,7 @@ __global__ void kListRefineHIndex(device_graph_pointers g_p, device_maintenance_
 }
 #endif
 
-void kListMaintenance(unsigned V, device_graph_pointers& g_p, device_maintenance_pointers& m_p, vector<pair<vertex, vertex>>& modifiedEdges, degree k) {
+void kListMaintenance(unsigned V, device_graph_pointers& g_p, device_maintenance_pointers& m_p, vector<pair<vertex, vertex>>& modifiedEdges, degree k, bool doNaively) {
 	#ifdef PRINT_STEPS
 		cout << "L MAX for k = " << k << endl;;
 	#endif
@@ -1118,7 +1162,7 @@ void kListMaintenance(unsigned V, device_graph_pointers& g_p, device_maintenance
 	if (modifiedEdges.size() > 1)
 		kListFindUpperBoundBatch<<<BLOCK_COUNT, BLOCK_DIM>>>(g_p, m_p, V, modifiedEdges.size(), k);
 	else
-		kListFindUpperBound<<<BLOCK_COUNT, BLOCK_DIM>>>(g_p, m_p, V, k);
+		kListFindUpperBound<<<BLOCK_COUNT, BLOCK_DIM>>>(g_p, m_p, V, k, doNaively);
 
 	#ifdef PRINT_STEPS
 	vector<degree> upper(V);
@@ -1392,7 +1436,7 @@ chrono::duration<double, milli> funcTime(F&& func){
 	return t2- t1;
 }
 
-void maintenance(GraphInterface& g, device_graph_pointers& g_p, device_maintenance_pointers& m_p, vector<pair<vertex, vertex>>& modifiedEdges, bool isDelete = false, bool inPlace = false) {
+void maintenance(GraphInterface& g, device_graph_pointers& g_p, device_maintenance_pointers& m_p, device_accessory_pointers& a_p, vector<pair<vertex, vertex>>& modifiedEdges, bool isDelete = false, bool inPlace = false) {
 	chrono::duration<double, milli> insertTime{}, kmaxTime{}, klistTime{};
 
 	auto batches = getKmaxEdgeBatches(g.kmaxes, modifiedEdges);
@@ -1408,7 +1452,10 @@ void maintenance(GraphInterface& g, device_graph_pointers& g_p, device_maintenan
 	}
 	#endif
 
+	putKmaxInDeviceMemory(m_p, g.kmaxes);
+
 	degree M = 0;
+	set<degree> kToDoNaively;
 	for (auto& batch: batches) {
 		if (batch.empty()) continue;
 
@@ -1425,13 +1472,37 @@ void maintenance(GraphInterface& g, device_graph_pointers& g_p, device_maintenan
 				}
 				moveGraphToDevice(static_cast<Graph&>(g), g_p);
 			});
+
+			if (batch.size() == 1) {
+				// sometimes we get kmax maintenance for free, since if this holds, itll stay the same
+				if (g.kmaxes[batch[0].first] < g.kmaxes[batch[0].second]) {
+					M = max(M, min(g.kmaxes[batch[0].first], g.kmaxes[batch[0].second]));
+					continue;
+				}
+			}
+
+			vector<vertex> roots;
+			for (auto edge: batch)
+				roots.push_back((g.kmaxes[edge.first] < g.kmaxes[edge.second]) ? edge.first : edge.second);
+			map<vertex, degree> preKmaxes;
+			for (vertex r: roots)
+				preKmaxes[r] = g.kmaxes[r];
+
+			// cout << "kmax=" << g.kmaxes[batch[0].first] << " " << g.kmaxes[batch[0].second] << " -> ";
 			kmaxTime += funcTime([&] {
-				putKmaxInDeviceMemory(m_p, g.kmaxes);
 				M = max(M, getMValue(g_p, m_p,batch));
 				if (!isDelete) kmaxMaintenance(g.V, g_p, m_p, batch);
 				else kmaxMaintenanceDelete(g.V, g_p, m_p, batch);
 				getKmaxFromDeviceMemory(m_p, g.kmaxes);
 			});
+			// cout << "kmax=" << g.kmaxes[batch[0].first] << " " << g.kmaxes[batch[0].second] << " -> ";
+
+			for (vertex r: roots) {
+				if (g.kmaxes[r] > preKmaxes[r]) {
+					// kToDoNaively.emplace(preKmaxes[r]);
+					kToDoNaively.emplace(g.kmaxes[r]);
+				}
+			}
 		} else if (GraphGPU* _ = dynamic_cast<GraphGPU*>(&g)) {
 			insertTime += funcTime([&] {
 				putModifiedEdgesInDeviceMemory(g_p, batch);
@@ -1459,14 +1530,31 @@ void maintenance(GraphInterface& g, device_graph_pointers& g_p, device_maintenan
 	putModifiedEdgesInDeviceMemory(g_p, modifiedEdges);
 	if (M > g.kmax-1) M = g.kmax-1;
 	#ifdef PRINT_MAINTENANCE_STATS
+	cout << "kNaive(" << kToDoNaively.size() << ") ";
+	if (kToDoNaively.size() > 0) {
+		cout << "{";
+		for (degree k: kToDoNaively)
+			cout << k << ", ";
+		cout << "\b\b} ";
+	}
 	cout << "M+1=" << M+1 << " ";
 	#endif
 	klistTime = funcTime([&] {
 		for (degree k = 0; k <= M+1; ++k) {
-			putLmaxInDeviceMemory(m_p, g.lmaxes[k]);
-			if (!isDelete) kListMaintenance(g.V, g_p, m_p, modifiedEdges, k);
-			else kListMaintenanceDelete(g.V, g_p, m_p, modifiedEdges, k);
-			getLmaxFromDeviceMemory(m_p, g.lmaxes[k]);
+			#ifdef PRINT_STEPS
+			vertex root = modifiedEdges[0].first;
+			if (g.lmaxes[k][modifiedEdges[0].second] < g.lmaxes[k][modifiedEdges[0].first])
+				root = modifiedEdges[0].second;
+			auto root_l_max = g.lmaxes[k][root];
+			cout << "root_l_max = " << root_l_max << endl;
+			#endif
+			// putLmaxInDeviceMemory(m_p, g.lmaxes[k]);
+			// if (!isDelete) kListMaintenance(g.V, g_p, m_p, modifiedEdges, k, kToDoNaively.contains(k));
+			// else kListMaintenanceDelete(g.V, g_p, m_p, modifiedEdges, k);
+			// getLmaxFromDeviceMemory(m_p, g.lmaxes[k]);
+			refreshGraphOnGPU(g.V, g_p);
+			auto [l, core] = KList(g.V, g_p, a_p, k);
+			g.lmaxes[k] = core;
 		}
 	});
 
@@ -1475,22 +1563,141 @@ void maintenance(GraphInterface& g, device_graph_pointers& g_p, device_maintenan
 	#endif
 }
 
+void maintenanceFast(GraphGPU& g, device_graph_pointers& g_p, device_maintenance_pointers& m_p, device_accessory_pointers& a_p, vector<pair<vertex, vertex>>& modifiedEdges) {
+	chrono::duration<double, milli> insertTime{}, kmaxTime{}, klistTime{};
+
+	vector<vector<pair<vertex, vertex>>> batches;
+	if (modifiedEdges.size() == 1) {
+		batches.push_back({modifiedEdges[0]});
+	} else {
+		batches = getKmaxEdgeBatches(g.kmaxes, modifiedEdges);
+		#ifdef PRINT_MAINTENANCE_STATS
+		cout << "batches: " << batches.size() << " ";
+		if (!batches.empty()) {
+			cout << "max(" << (*max_element(batches.begin(), batches.end(), [](const vector<pair<vertex, vertex>>& a, const vector<pair<vertex, vertex>>& b){return a.size() < b.size();})).size() << ") ";
+			unsigned long long avg = 0;
+			for (auto& batch: batches) avg += batch.size();
+			avg /= batches.size();
+			cout << "avg(" << avg << ") ";
+			cout << "one(" << count_if(batches.begin(), batches.end(), [](const vector<pair<vertex, vertex>>& a){return a.size() == 1;}) << ") ";
+		}
+		#endif
+	}
+
+	putKmaxInDeviceMemory(m_p, g.kmaxes);
+
+	degree M = 0;
+	for (auto& batch: batches) {
+		insertTime += funcTime([&] {
+			putModifiedEdgesInDeviceMemory(g_p, batch);
+			g.insertEdges(batch);
+		});
+		kmaxTime += funcTime([&] {
+			M = max(M, getMValue(g_p, m_p,batch));
+			kmaxMaintenance(g.V, g_p, m_p, batch);
+			// swapInOut(g_p);
+			// auto [_, core] = KList(g.V, g_p, a_p, 0);
+			// swapInOut(g_p);
+		});
+	}
+	getKmaxFromDeviceMemory(m_p, g.kmaxes); // needed because edge batches uses it...
+	// g.kmaxes = move(core);
+
+	getMaxKmax(g.kmax, g.V, m_p);
+	// cout << "maxkmax = " << g.kmax << " ";
+
+	if (g.kmax+1 != g.lmaxes.size()) {
+		unsigned prevSize = g.lmaxes.size();
+		g.lmaxes.resize(g.kmax+1);
+
+		for (unsigned i = prevSize; i < g.kmax+1; ++i)
+			g.lmaxes[i] = vector<degree>(g.V);
+	}
+
+	putModifiedEdgesInDeviceMemory(g_p, modifiedEdges);
+	if (M > g.kmax-1) M = g.kmax-1;
+	#ifdef PRINT_MAINTENANCE_STATS
+	cout << "M+1=" << M+1 << " ";
+	#endif
+	klistTime = funcTime([&] {
+		for (degree k = 0; k <= M+1; ++k) {
+			refreshGraphOnGPU(g.V, g_p);
+			auto [_, core] = KList(g.V, g_p, a_p, k);
+			g.lmaxes[k] = move(core);
+		}
+		refreshGraphOnGPU(g.V, g_p); // other stuff might not know degrees are fucked up... lets fix that
+	});
+
+	#ifdef PRINT_MAINTENANCE_STATS
+	cout << "insert: " << insertTime << " kmax: " << kmaxTime << " klist: " << klistTime << endl;
+	#endif
+}
+
+// __global__ void reduceSum(int* array, int* deviceSum, unsigned V) {
+// 	__shared__ degree warp_results[32];
+//
+// 	for (vertex base = 0; base < V; base += THREAD_COUNT) {
+// 		vertex v = base + GLOBAL_THREAD_ID;
+// 		degree d = 0;
+// 		if (v < V) d = array[v];
+//
+// 		for (int offset = 16; offset > 0; offset /= 2) {
+// 			d += __shfl_down_sync(0xffffffff, d, offset);
+// 		}
+//
+// 		if (IS_MAIN_IN_WARP)
+// 			warp_results[WARP_ID] = d;
+//
+// 		__syncthreads();
+//
+// 		if (IS_MAIN_WARP) {
+// 			d = warp_results[LANE_ID];
+//
+// 			for (int offset = 16; offset > 0; offset /= 2) {
+// 				d += __shfl_down_sync(0xffffffff, d, offset);
+// 			}
+//
+// 		}
+//
+// 		if (IS_MAIN_THREAD)
+// 			atomicAdd(deviceSum, d);
+// 	}
+// }
 
 int main(int argc, char *argv[]) {
-	// generateGraph("../dataset/random", 10, 40);
+	// int value = 1024*513 + 27;
+	// int* array = new int[value];
+	// for (int i = 0; i < value; ++i)
+	// 	array[i] = 1;
+	// int* deviceArray;
+	// cudaMalloc(&deviceArray, value * sizeof(int));
+	// cudaMemcpy(deviceArray, array, value * sizeof(int), cudaMemcpyHostToDevice);
+	// int* deviceSum;
+	// cudaMalloc(&deviceSum, sizeof(int));
+	// cudaMemset(deviceSum, 0, sizeof(int));
+	// reduceSum<<<BLOCK_COUNT, BLOCK_DIM>>>(deviceArray, deviceSum, value);
+	// int sum = 0;
+	// cudaMemcpy(&sum, deviceSum, sizeof(int), cudaMemcpyDeviceToHost);
+	// cout << value << endl;
+	// cout << sum << endl;
+	// return 0;
+
+
+	// generateGraph("../dataset/random", 5, 15);
+	// const string filename = "../dataset/random";
 
 	// const string filename = "../dataset/digraph";
 	// const string filename = "../dataset/digraphWithEmpty";
 	// const string filename = "../dataset/example2";
-	const string filename = "../dataset/congress";
+	// const string filename = "../dataset/congress";
 	// const string filename = "../dataset/wiki_vote";
 	// const string filename = "../dataset/wiki_vote-scramble"; //2.5 times speedup, due to better batching
 	// const string filename = "../dataset/email";
 	// const string filename = "../dataset/email-scramble";
 	// const string filename = "../dataset/amazon0601";
-	// const string filename = "../dataset/pokec";
-	// const string filename = "../dataset/live_journal";
-	// const string filename = "../dataset/hollywood"; // 2156s load time lol, 554s decomp time (474s second time), more than 50gb ram used (23gb for this program probably), pruned 195347 vertices (8.96%)
+	// const string filename = "../dataset/pokec"; // dcore = 1.2s
+	// const string filename = "../dataset/live_journal"; // dcore = 25s
+	const string filename = "../dataset/hollywood"; // 2156s load time lol, 554s decomp time (474s second time), more than 50gb ram used (23gb for this program probably), pruned 195347 vertices (8.96%)
 
 	auto start = chrono::steady_clock::now();
 
@@ -1503,6 +1710,7 @@ int main(int argc, char *argv[]) {
 		auto res = dcore(g);
 		writeDecompFile(g, filename);
 	}
+	// writeDCoreResultsText(g.lmaxes, "../results/before.txt", 7);
 
 	// writeDCoreResultsText(res, "../results/cudares.txt", 16);
 	// writeDCoreResults(res, "../results/cudares");
@@ -1519,8 +1727,9 @@ int main(int argc, char *argv[]) {
 
 // #define SINGLE_INSERT
 // #define SINGLE_DELETE
-#define SINGLE_INSERT_RANDOM
-// #define SPEED_TEST
+// #define SINGLE_INSERT_RANDOM
+// #define SINGLE_DELETE_RANDOM
+#define SPEED_TEST
 // #define STEP_TEST
 
 	// ***********************************************r*******************************
@@ -1619,7 +1828,8 @@ int main(int argc, char *argv[]) {
 	unsigned inserts = 10;
 	cout << "Doing " << inserts << " random insertions..." << endl;
 
-	vector<pair<vertex, vertex>> manual = {{6,0},{7,1},{5,3}};
+	// vector<pair<vertex, vertex>> manual = {{6,0},{7,1},{5,3}};
+	vector<pair<vertex, vertex>> manual = {{3,2}};
 
 	auto maintTotalStart = chrono::steady_clock::now();
 	auto totalErrors = 0;
@@ -1630,7 +1840,60 @@ int main(int argc, char *argv[]) {
 		cout << "Inserting " << edgeToAdd[0].first << "->" << edgeToAdd[0].second << endl;
 
 		auto maintStart = chrono::steady_clock::now();
-		maintenance(g, g_p, m_p, edgeToAdd, false, true);
+		maintenance(g, g_p, m_p, a_p, edgeToAdd, false, true);
+		cout << "Maintenance step time \t\t" << chrono::duration_cast<chrono::milliseconds>(chrono::steady_clock::now() - maintStart).count() << "ms" << endl;
+
+		#ifdef SINGlE_INSERT_CHECK
+		cout << "Checking correctness.." << endl;
+		auto checkStart = chrono::steady_clock::now();
+		auto comp = checkDCore(g, g_p, a_p);
+		cout << "Comparison DCore generated\t" << chrono::duration_cast<chrono::milliseconds>(chrono::steady_clock::now() - checkStart).count() << "ms" << endl;
+		cout << "Checking kmax... ";
+		auto errors = 0;
+		for (vertex v = 0; v < g.V; ++v) {
+			if (g.kmaxes[v] != comp.first[v]) {
+				cout << "mismatching kmax["<<v<<"] " << g.kmaxes[v] << "!=" << comp.first[v] << endl;
+				errors++;
+			}
+		}
+		cout << "found " << errors << " errors" << endl;
+		totalErrors += errors;
+		errors = 0;
+		cout << "Checking lmax... ";
+		for (degree k = 0; k < g.lmaxes.size(); ++k) {
+			for (vertex v = 0; v < g.V; ++v) {
+				if (g.lmaxes[k][v] != comp.second[k][v]) {
+					cout << "mismatching lmax["<<k<<"]["<<v<<"] " << g.lmaxes[k][v] << "!=" << comp.second[k][v] << endl;
+					errors++;
+				}
+			}
+		}
+		cout << "found " << errors << " errors" << endl;
+		totalErrors += errors;
+		#endif
+	}
+	cout << "Maintenance total time \t\t" << chrono::duration_cast<chrono::milliseconds>(chrono::steady_clock::now() - maintTotalStart).count() << "ms" << endl;
+	cout << "found " << totalErrors << " errors" << endl;
+#endif
+
+		// ***********************************************r*******************************
+#ifdef SINGLE_DELETE_RANDOM
+	unsigned deletes = 1;
+	cout << "Doing " << deletes << " random deletions..." << endl;
+
+	vector<pair<vertex, vertex>> manual = {{1, 4}};
+	// vector<pair<vertex, vertex>> manual = {{4,5},{5,4}};
+
+	auto maintTotalStart = chrono::steady_clock::now();
+	auto totalErrors = 0;
+	for (unsigned i = 0; i < deletes; ++i) {
+		auto edgeToAdd = vector<pair<vertex, vertex>>();
+		// edgeToAdd.push_back(g.getRandomDeleteEdge());
+		edgeToAdd.push_back(manual[i]);
+		cout << "Deleting " << edgeToAdd[0].first << "->" << edgeToAdd[0].second << endl;
+
+		auto maintStart = chrono::steady_clock::now();
+		maintenance(g, g_p, m_p, edgeToAdd, true, true);
 		cout << "Maintenance step time \t\t" << chrono::duration_cast<chrono::milliseconds>(chrono::steady_clock::now() - maintStart).count() << "ms" << endl;
 
 		if (!SINGlE_INSERT_SKIP_CHECK) {
@@ -1638,7 +1901,6 @@ int main(int argc, char *argv[]) {
 			auto checkStart = chrono::steady_clock::now();
 			auto comp = checkDCore(g, g_p, a_p);
 			cout << "Comparison DCore generated\t" << chrono::duration_cast<chrono::milliseconds>(chrono::steady_clock::now() - checkStart).count() << "ms" << endl;
-
 			cout << "Checking kmax... ";
 			auto errors = 0;
 			for (vertex v = 0; v < g.V; ++v) {
@@ -1665,45 +1927,72 @@ int main(int argc, char *argv[]) {
 	}
 	cout << "Maintenance total time \t\t" << chrono::duration_cast<chrono::milliseconds>(chrono::steady_clock::now() - maintTotalStart).count() << "ms" << endl;
 	cout << "found " << totalErrors << " errors" << endl;
-
-
 #endif
 
 	// ***********************************************r*******************************
 #ifdef SPEED_TEST
-	GraphGPU m_gpu(g, g_p);
-	// Graph m_gpu(g.V);
-	unsigned batchSize = 1000;
-	assert(MODIFIED_EDGES_BUFFER_SIZE >= batchSize*2);	// Ensure all the edges will fit in the buffer
-	unsigned edgesAdded = 0;
-	for (unsigned batchStart = 0; batchStart < g.E; batchStart += batchSize) {
-		vector<pair<vertex, vertex>> edgesToAdd;
-		for (unsigned eid = batchStart; eid < batchStart + batchSize && eid < g.E; ++eid) {
-			edgesAdded++;
-			edgesToAdd.push_back(g.edges[eid]);
-		}
-		if (batchSize > 1)				cout << edgesAdded << "/" << g.E << endl;
-		else if (edgesAdded % 100 == 0) cout << edgesAdded << "/" << g.E << endl;
+	assert(OFFSET_GAP >= 1);	// gapsize needs to be atleast 1;
+	unsigned inserts = 10;
+	unsigned batchSize = 1;
+	cout << "Doing " << inserts << " random insertions..." << endl;
 
-		maintenance(m_gpu, g_p, m_p, edgesToAdd);
-	}
+	#ifdef SINGlE_INSERT_CHECK
+	Graph gc(filename);
+	device_graph_pointers gc_p;
+	allocateDeviceGraphMemory(gc, gc_p);
+	device_accessory_pointers ac_p;
+	allocateDeviceAccessoryMemory(gc, ac_p);
+	#endif
+	GraphGPU m(g, g_p);
+	moveGraphToDevice(g, g_p);
 
-	for (vertex v = 0; v < m_gpu.V; ++v) {
-		if (m_gpu.kmaxes[v] != g.kmaxes[v]) {
-			cout << edgesAdded << " has mismatching kmax["<<v<<"] " << m_gpu.kmaxes[v] << "!=" << g.kmaxes[v] << endl;
-		}
-	}
-	if (m_gpu.lmaxes.size() != g.lmaxes.size()) {
-		cout << edgesAdded << " has mismatching k-max sizes! " << m_gpu.lmaxes.size() << "!=" << g.lmaxes.size() << endl;
-	}
-	for (degree k = 0; k < g.lmaxes.size(); ++k) {
-		for (vertex v = 0; v < m_gpu.V; ++v) {
-			if (m_gpu.lmaxes[k][v] != g.lmaxes[k][v]) {
-				cout << edgesAdded << " has mismatching lmax["<<k<<"]["<<v<<"] " << m_gpu.lmaxes[k][v] << "!=" << g.lmaxes[k][v] << endl;
+	auto maintTotalStart = chrono::steady_clock::now();
+	auto totalErrors = 0;
+	for (unsigned i = 0; i < inserts; ++i) {
+		auto edgeToAdd = vector<pair<vertex, vertex>>();
+		for (unsigned j = 0; j < batchSize; ++j)
+			edgeToAdd.push_back(g.getRandomInsertEdge());
+		if (batchSize == 1)
+			cout << "Inserting " << edgeToAdd[0].first << "->" << edgeToAdd[0].second << endl;
+		else
+			cout << "Inserting " << batchSize << " edges" << endl;
+
+		auto maintStart = chrono::steady_clock::now();
+		maintenanceFast(m, g_p, m_p, a_p, edgeToAdd);
+		cout << "Maintenance step time \t\t" << chrono::duration_cast<chrono::milliseconds>(chrono::steady_clock::now() - maintStart).count() << "ms" << endl;
+
+		#ifdef SINGlE_INSERT_CHECK
+		gc.insertEdgesInPlace(edgeToAdd);
+		cout << "Checking correctness.." << endl;
+		auto checkStart = chrono::steady_clock::now();
+		auto comp = checkDCore(gc, gc_p, ac_p);
+		cout << "Comparison DCore generated\t" << chrono::duration_cast<chrono::milliseconds>(chrono::steady_clock::now() - checkStart).count() << "ms" << endl;
+		cout << "Checking kmax... ";
+		auto errors = 0;
+		for (vertex v = 0; v < m.V; ++v) {
+			if (m.kmaxes[v] != comp.first[v]) {
+				cout << "mismatching kmax["<<v<<"] " << m.kmaxes[v] << "!=" << comp.first[v] << endl;
+				errors++;
 			}
 		}
+		cout << "found " << errors << " errors" << endl;
+		totalErrors += errors;
+		errors = 0;
+		cout << "Checking lmax... ";
+		for (degree k = 0; k < m.lmaxes.size(); ++k) {
+			for (vertex v = 0; v < m.V; ++v) {
+				if (m.lmaxes[k][v] != comp.second[k][v]) {
+					cout << "mismatching lmax["<<k<<"]["<<v<<"] " << m.lmaxes[k][v] << "!=" << comp.second[k][v] << endl;
+					errors++;
+				}
+			}
+		}
+		cout << "found " << errors << " errors" << endl;
+		totalErrors += errors;
+		#endif
 	}
-	cout << "done" << endl;
+	cout << "Maintenance total time \t\t" << chrono::duration_cast<chrono::milliseconds>(chrono::steady_clock::now() - maintTotalStart).count() << "ms" << endl;
+	cout << "found " << totalErrors << " errors" << endl;
 #endif
 
 	// ******************************************************************************

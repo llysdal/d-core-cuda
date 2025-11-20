@@ -14,6 +14,10 @@ public:
 	explicit GraphGPU(Graph& g, device_graph_pointers dgp);
 	void insertEdges(const vector<pair<vertex, vertex>>& edges) override;
 	void insertEdgesInPlace(const vector<pair<vertex, vertex>> &edgesToBeInserted) override {assert(false);};
+	pair<vertex, vertex> getRandomInsertEdge() override {assert(false); return {0,0};};
+	void deleteEdges(const vector<pair<vertex, vertex>>& edgesToBeDeleted) override {assert(false);};
+	void deleteEdgesInPlace(const vector<pair<vertex, vertex>>& edgesToBeDeleted) override {assert(false);};
+	pair<vertex, vertex> getRandomDeleteEdge() override {assert(false); return {0,0};};
 	~GraphGPU();
 };
 
