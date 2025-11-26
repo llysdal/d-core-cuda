@@ -7,28 +7,35 @@
 #include <omp.h>
 #include <vector>
 #include <map>
+#include <omp.h>
 
 using namespace std;
 
 // #define PRINT_STEPS
+#define PRINT_DCORE_STATS
 #define PRINT_MAINTENANCE_STATS
+
+// #define KEDGE_BATCHING	// good for high batch sizes with low kmax graphs
+#define KMAX_BATCHING	// good for low batch sizes with high kmax graphs
 
 // #define HINDEX_NOWARP
 #define HINDEX_WARP	//10x speedup!! (tested with email single add 47->46) [3x speedup on livejournal 2->1]
-					//even more now that kmax also has warp!!
+// #define HINDEX_BLOCK
 
 // #define PED_NOWARP
 #define PED_WARP	//10x speedup for rly heavy batching :)
+// #define PED_BLOCK
 
-#define USE_RESTRICTIVE_KLIST_COMPUTE_MASK	// this doesnt seem to always work..
+
+// #define USE_RESTRICTIVE_KLIST_COMPUTE_MASK	// this doesnt seem to always work.. obsolete
 
 // #define SINGlE_INSERT_CHECK		// check whether the single insert/delete is correct
 
-#define FORCE_RECALCULATE_DCORE		false
+#define FORCE_RECALCULATE_DCORE		true
 #define FORCE_REBUILD_GRAPH			false	// required for non in-place insertion
 #define OFFSET_GAP			1
 
-#define BLOCK_COUNT			50
+#define BLOCK_COUNT			256
 #define BLOCK_DIM			1024
 #define WARPS_EACH_BLOCK	(BLOCK_DIM >> 5)
 #define THREAD_COUNT		(BLOCK_DIM * BLOCK_COUNT)

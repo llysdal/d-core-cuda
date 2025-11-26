@@ -63,7 +63,7 @@ void writeDCoreResultsText(vector<vector<degree>>& values, const string& outputF
 	ofstream outfile (outputFile,ios::out|ios::binary|ios::trunc);
 	for (auto r: values) {
 		for (auto v: r) {
-			outfile << setw(width);
+			// outfile << setw(width); not supported
 			outfile << v << " ";
 		}
 		outfile << "\r\n";
@@ -103,6 +103,21 @@ void writeDecompFile(Graph& g, const string& filename) {
 	decompout.write(reinterpret_cast<char*>(g.kmaxes.data()), static_cast<streamsize>(g.V * sizeof(degree)));
 	for (unsigned k = 0; k <= g.kmax; ++k)
 		decompout.write(reinterpret_cast<char*>(g.lmaxes[k].data()), static_cast<streamsize>(g.V * sizeof(degree)));
+	decompout.close();
+}
+void writeDecompFileCPU(Graph& g, const string& filename) {
+	ofstream decompout;
+	decompout.open(filename + ".decompCPU", ios::out);
+	decompout << g.V << endl;;
+	for (unsigned v = 0; v < g.V; ++v) {
+		unsigned end = g.kmaxes[v];
+		for (unsigned j = 0; j <= end; ++j) {
+			decompout << g.lmaxes[j][v];
+			if (j < end) decompout << " ";
+		}
+		if (v != g.V-1)
+			decompout << endl;
+	}
 	decompout.close();
 }
 

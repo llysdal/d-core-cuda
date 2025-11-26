@@ -14,6 +14,7 @@
 #include "cuda_utils.cuh"
 #include "graph_gpu.h"
 #include "utils.h"
+#include <sstream>
 
 using namespace std;
 
@@ -33,9 +34,8 @@ __global__ void scan(device_graph_pointers g_p, device_accessory_pointers a_p, u
 	}
 	__syncthreads();
 
-	unsigned global_threadIdx = blockIdx.x * blockDim.x + threadIdx.x;
 	for (unsigned base = 0; base < V; base += THREAD_COUNT) {
-		vertex v = base + global_threadIdx;
+		vertex v = base + GLOBAL_THREAD_ID;
 
 		if (a_p.visited[v]) continue;
 		if (v >= V) continue;
@@ -140,6 +140,7 @@ __global__ void process(device_graph_pointers g_p, device_accessory_pointers a_p
 	}
 }
 
+
 pair<degree, vector<degree>> KList(unsigned V, device_graph_pointers& g_p, device_accessory_pointers& a_p, unsigned k) {
 	unsigned level = 0;
 	unsigned count = 0;
@@ -167,57 +168,97 @@ pair<degree, vector<degree>> KList(unsigned V, device_graph_pointers& g_p, devic
 	return {level - 1, res};
 }
 
-vector<vector<degree>> dcore(Graph &g) {
+degree KListInplace(unsigned V, vector<degree>& arr, device_graph_pointers& g_p, device_accessory_pointers& a_p, unsigned k) {
+	unsigned level = 0;
+	unsigned count = 0;
+
+	// resetting GPU variables
+	cudaMemset(a_p.global_count, 0, sizeof(unsigned));
+	cudaMemset(a_p.visited, 0, V * sizeof(unsigned));
+	cudaMemset(a_p.core, -1, V * sizeof(degree));
+
+	// algo time
+	while (count < V) {
+		cudaMemset(a_p.bufferTails, 0, BLOCK_COUNT * sizeof(unsigned));
+
+		scan<<<BLOCK_COUNT, BLOCK_DIM>>>(g_p, a_p, k, level, V);
+		process<<<BLOCK_COUNT, BLOCK_DIM>>>(g_p, a_p, k, level);
+
+		cudaMemcpy(&count, a_p.global_count, sizeof(unsigned), cudaMemcpyDeviceToHost);
+		level++;
+	}
+
+	// getting result from GPU
+	cudaMemcpy(arr.data(), a_p.core, V * sizeof(degree), cudaMemcpyDeviceToHost);
+
+	return level - 1;
+}
+
+vector<vector<degree>>& dcore(Graph &g) {
 // ***** setting up GPU memory *****
-	auto startMemory = chrono::steady_clock::now();
+	auto startMemory = chrono::high_resolution_clock::now();
 
 	// alloc all the memory we need
 	device_accessory_pointers a_p;
-	allocateDeviceAccessoryMemory(g, a_p);
+	unsigned long long accessory_mem_size = allocateDeviceAccessoryMemory(g, a_p);
 	device_graph_pointers g_p;
-	allocateDeviceGraphMemory(g, g_p);
+	unsigned long long graph_mem_size = allocateDeviceGraphMemory(g, g_p);
 
 	// move graph to GPU
 	moveGraphToDevice(g, g_p);
 
-	auto endMemory = chrono::steady_clock::now();
-	cout << "D-core memory setup done\t" << chrono::duration_cast<chrono::milliseconds>(endMemory - startMemory).count() << "ms" << endl;
+	auto endMemory = chrono::high_resolution_clock::now();
+	#ifdef PRINT_DCORE_STATS
+		cout << "D-core memory setup done\t" << chrono::duration<double, milli>(endMemory - startMemory).count() << "ms" << endl;
+		cout << "Allocated memory\t\t" << calculateSize(graph_mem_size + accessory_mem_size) << "\tgraph: " << calculateSize(graph_mem_size) << " accessory: " << calculateSize(accessory_mem_size) << endl;
+	#endif
 
 // ***** calculating k-max *****
-	auto startKmax = chrono::steady_clock::now();
+	auto startKmax = chrono::high_resolution_clock::now();
 	swapInOut(g_p); // do a flip!! (we're calculating the 0 l-list)
-	auto [kmax, kmaxes] = KList(g.V, g_p, a_p, 0);
+	auto kmax = KListInplace(g.V, g.kmaxes, g_p, a_p, 0);
 	swapInOut(g_p); // let's fix the mess we made...
-
-	auto endKmax = chrono::steady_clock::now();
-	cout << "D-core k-max done\t\t" << chrono::duration_cast<chrono::milliseconds>(endKmax - startKmax).count() << "ms" << endl;
+	auto endKmax = chrono::high_resolution_clock::now();
+	#ifdef PRINT_DCORE_STATS
+	cout << "D-core k-max done\t\t" << chrono::duration<double, milli>(endKmax - startKmax).count() << "ms" << endl;
 	cout << "\tkmax: " << kmax << endl;
+	#endif
 	g.kmax = kmax;
-	g.kmaxes = kmaxes;
+	// g.kmaxes = move(kmaxes);
+	g.lmaxes.resize(g.kmax+1);
+	#pragma omp parallel for
+	for (int k = 0; k <= g.kmax; k++) {
+		g.lmaxes[k].resize(g.V);
+	}
 
 // ***** time to do the d-core decomposition *****
-	auto startDecomp = chrono::steady_clock::now();
-	vector<vector<degree>> res;
+	auto startDecomp = chrono::high_resolution_clock::now();
+	// vector<vector<degree>> res;
 	degree lmax = 0;
 	for (unsigned k = 0; k <= kmax; ++k) {
 		refreshGraphOnGPU(g, g_p);	// degrees will be wrecked from previous calculation
-
-		auto [l, core] = KList(g.V, g_p, a_p, k);
+		// g.lmaxes[k].resize(g.V);
+		auto l = KListInplace(g.V, g.lmaxes[k], g_p, a_p, k);
 		lmax = max(lmax, l);
-		res.push_back(core);
+		// res.push_back(core);
 	}
 
-	auto endDecomp = chrono::steady_clock::now();
-	cout << "D-core decomp done\t\t" << chrono::duration_cast<chrono::milliseconds>(endDecomp - startDecomp).count() << "ms" << endl;
+	auto endDecomp = chrono::high_resolution_clock::now();
 	g.lmax = lmax;
-	g.lmaxes = res;
+	// g.lmaxes = move(res);
 
+	#ifdef PRINT_DCORE_STATS
+	cout << "D-core decomp done\t\t" << chrono::duration<double, milli>(endDecomp - startDecomp).count() << "ms" << endl;
 	cout << "\tlmax: " << lmax << endl;
+	cout << "D-core total time\t\t" << chrono::duration<double, milli>(endDecomp - startDecomp + endKmax - startKmax).count() << "ms" << endl;
+	#endif
+
+	cout << chrono::duration<double, milli>(endKmax - startKmax).count() << " " << chrono::duration<double, milli>(endDecomp - startDecomp).count() << " " << chrono::duration<double, milli>(endDecomp - startDecomp + endKmax - startKmax).count() << endl;
 
 	deallocateDeviceAccessoryMemory(a_p);
 	deallocateDeviceGraphMemory(g_p);
 
-	return res;
+	return g.lmaxes;
 }
 
 vector<degree> checkKmax(Graph &g, device_graph_pointers& g_p, device_accessory_pointers& a_p) {
@@ -395,6 +436,49 @@ __global__ void kmaxCalculatePED(device_graph_pointers g_p, device_maintenance_p
 			if (o + LANE_ID >= end) break;
 
 			vertex neighbor = g_p.in_neighbors[o + LANE_ID];
+			if (m_p.k_max[neighbor] == m_p.k_max[v] && m_p.ED[neighbor] <= m_p.k_max[v])
+				atomicSub(m_p.PED + v, 1);
+		}
+	}
+}
+#endif
+
+#ifdef PED_BLOCK
+__global__ void kmaxCalculateED(device_graph_pointers g_p, device_maintenance_pointers m_p, unsigned V) {
+	for (unsigned base = 0; base < V; base += BLOCK_COUNT) {
+		vertex v = base + BLOCK_ID;
+		if (v >= V) break;
+
+		// m_p.ED[v] = 0;
+
+		offset start = g_p.in_neighbors_offset[v];
+		offset end = start + g_p.in_degrees[v];
+		for (offset o = start; o < end; o += BLOCK_DIM) {
+			if (o + THREAD_ID >= end) break;
+
+			vertex neighbor = g_p.in_neighbors[o + THREAD_ID];
+			if (m_p.k_max[neighbor] >= m_p.k_max[v])
+				atomicAdd(m_p.ED + v, 1);
+		}
+	}
+}
+
+__global__ void kmaxCalculatePED(device_graph_pointers g_p, device_maintenance_pointers m_p, unsigned V) {
+	for (unsigned base = 0; base < V; base += BLOCK_COUNT) {
+		vertex v = base + BLOCK_ID;
+		if (v >= V) break;
+
+		if (IS_MAIN_IN_WARP)
+			m_p.PED[v] = m_p.ED[v];
+		__syncwarp();
+		if (m_p.PED[v] == 0) continue;
+
+		offset start = g_p.in_neighbors_offset[v];
+		offset end = start + g_p.in_degrees[v];
+		for (offset o = start; o < end; o += BLOCK_DIM) {
+			if (o + THREAD_ID >= end) break;
+
+			vertex neighbor = g_p.in_neighbors[o + THREAD_ID];
 			if (m_p.k_max[neighbor] == m_p.k_max[v] && m_p.ED[neighbor] <= m_p.k_max[v])
 				atomicSub(m_p.PED + v, 1);
 		}
@@ -742,7 +826,7 @@ void kmaxMaintenanceDelete(unsigned V, device_graph_pointers& g_p, device_mainte
 	#endif
 }
 
-
+/*
 #ifdef PED_NOWARP
 __global__ void kListCalculateED(device_graph_pointers g_p, device_maintenance_pointers m_p, unsigned V, degree k) {
 	for (unsigned base = 0; base < V; base += THREAD_COUNT) {
@@ -1324,7 +1408,7 @@ void kListMaintenanceDelete(unsigned V, device_graph_pointers& g_p, device_maint
 	cout << endl;
 	#endif
 }
-
+*/
 
 vector<vector<pair<vertex, vertex>>> getKmaxEdgeBatches(vector<degree>& kmaxes, const vector<pair<vertex, vertex>>& edgesToBeInserted) {
 	vector<vector<pair<vertex, vertex>>> batches;
@@ -1347,6 +1431,7 @@ vector<vector<pair<vertex, vertex>>> getKmaxEdgeBatches(vector<degree>& kmaxes, 
 		B[edgeKmax[eid]].push_back(eid);
 	}
 
+	#ifdef KEDGE_BATCHING
 	for (auto& batch: B) { // each batch is a list of edges with the same kmax value
 		if (batch.empty()) continue;
 
@@ -1372,60 +1457,44 @@ vector<vector<pair<vertex, vertex>>> getKmaxEdgeBatches(vector<degree>& kmaxes, 
 				flag = false;	// we're done
 		}
 	}
+	#endif
+	#ifdef KMAX_BATCHING
+	while (B.size() > 0) {
+		vector<int> S;
+		vector<pair<vertex, vertex>> S_edge;
 
-	return batches;
-}
-
-vector<vector<pair<vertex, vertex>>> getKListEdgeBatches(vector<vector<degree>>& lmaxes, degree k, const vector<pair<vertex, vertex>>& edgesToBeInserted) {
-	vector<vector<pair<vertex, vertex>>> batches;
-
-	degree maxLmax = 0;
-	vector<degree> edgeRoot(edgesToBeInserted.size());
-	vector<degree> edgeLmax(edgesToBeInserted.size());
-	for (unsigned eid = 0; eid < edgesToBeInserted.size(); ++eid) {
-		auto edge = edgesToBeInserted[eid];
-		vertex root = edge.second;
-		if (lmaxes[k][edge.first] > lmaxes[k][edge.second])
-			root = edge.first;
-		edgeRoot[eid] = root;
-		edgeLmax[eid] = lmaxes[k][root];
-		maxLmax = max(maxLmax, lmaxes[k][root]);
-	}
-	// buckets
-	vector<vector<unsigned>> B(maxLmax + 1);
-	for (unsigned eid = 0; eid < edgesToBeInserted.size(); ++eid) {
-		B[edgeLmax[eid]].push_back(eid);
-	}
-
-	for (auto& batch: B) { // each batch is a list of edges with the same lmax value
-		if (batch.empty()) continue;
-
-		bool flag = true;
-		while (flag) {
-			vector<pair<vertex, vertex>> candidateBatch;
-			vector<bool> v_ (lmaxes[k].size(), false);
-
-			for (auto it = batch.begin(); it != batch.end();) {
-				unsigned eid = *(it);
-				if (candidateBatch.empty() || !v_[edgeRoot[eid]]) {
-					candidateBatch.push_back(edgesToBeInserted[eid]);
-					v_[edgeRoot[eid]] = true;
-					it = batch.erase(it);
+		for (auto it = B.begin(); it != B.end();) {
+			if (!it->empty()) {
+				if (S.empty()) {
+					int eid = *(it->begin());
+					it->erase(it->begin());
+					S.push_back(eid);
+					S_edge.push_back(edgesToBeInserted[eid]);
 				} else {
-					++it;
+					degree x = edgeKmax[*(it->begin())];
+					degree y = edgeKmax[S[0]];
+					degree abs_diff = x > y ? x - y : y - x;
+					if (abs_diff > 1) {
+						int eid = *(it->begin());
+						it->erase(it->begin());
+						S.push_back(eid);
+						S_edge.push_back(edgesToBeInserted[eid]);
+					}
 				}
+				++it;
+			} else {
+				it = B.erase(it);
 			}
-
-			if (!candidateBatch.empty())
-				batches.push_back(candidateBatch);
-			else
-				flag = false;	// we're done
 		}
+		if(S.empty()){  //no edge can be added to S, meaning no edges can be batched based on k_max value
+			break;
+		}
+		batches.push_back(S_edge);
 	}
+	#endif
 
 	return batches;
 }
-
 
 
 template<typename F>
@@ -1559,11 +1628,13 @@ void maintenance(GraphInterface& g, device_graph_pointers& g_p, device_maintenan
 	});
 
 	#ifdef PRINT_MAINTENANCE_STATS
-	cout << (isDelete ? "delete: " : "insert: ") << insertTime << " kmax: " << kmaxTime << " klist: " << klistTime << endl;
+	cout << (isDelete ? "delete: " : "insert: ") << std::chrono::duration_cast<std::chrono::milliseconds>(insertTime).count()
+		<< " kmax: " << std::chrono::duration_cast<std::chrono::milliseconds>(kmaxTime).count()
+		<< " klist: " << std::chrono::duration_cast<std::chrono::milliseconds>(klistTime).count() << endl;
 	#endif
 }
 
-void maintenanceFast(GraphGPU& g, device_graph_pointers& g_p, device_maintenance_pointers& m_p, device_accessory_pointers& a_p, vector<pair<vertex, vertex>>& modifiedEdges) {
+tuple<chrono::duration<double, milli>, chrono::duration<double, milli>, chrono::duration<double, milli>> maintenanceFast(GraphGPU& g, device_graph_pointers& g_p, device_maintenance_pointers& m_p, device_accessory_pointers& a_p, vector<pair<vertex, vertex>>& modifiedEdges) {
 	chrono::duration<double, milli> insertTime{}, kmaxTime{}, klistTime{};
 
 	vector<vector<pair<vertex, vertex>>> batches;
@@ -1580,6 +1651,10 @@ void maintenanceFast(GraphGPU& g, device_graph_pointers& g_p, device_maintenance
 			avg /= batches.size();
 			cout << "avg(" << avg << ") ";
 			cout << "one(" << count_if(batches.begin(), batches.end(), [](const vector<pair<vertex, vertex>>& a){return a.size() == 1;}) << ") ";
+			// cout << "{";
+			// for (auto& batch: batches)
+			// 	cout << batch.size() << ", ";
+			// cout << "\b\b} ";
 		}
 		#endif
 	}
@@ -1592,6 +1667,13 @@ void maintenanceFast(GraphGPU& g, device_graph_pointers& g_p, device_maintenance
 			putModifiedEdgesInDeviceMemory(g_p, batch);
 			g.insertEdges(batch);
 		});
+		if (batch.size() == 1) {
+			// sometimes we get kmax maintenance for free, since if this holds, itll stay the same
+			if (g.kmaxes[batch[0].first] < g.kmaxes[batch[0].second]) {
+				M = max(M, min(g.kmaxes[batch[0].first], g.kmaxes[batch[0].second]));
+				continue;
+			}
+		}
 		kmaxTime += funcTime([&] {
 			M = max(M, getMValue(g_p, m_p,batch));
 			kmaxMaintenance(g.V, g_p, m_p, batch);
@@ -1603,7 +1685,10 @@ void maintenanceFast(GraphGPU& g, device_graph_pointers& g_p, device_maintenance
 	getKmaxFromDeviceMemory(m_p, g.kmaxes); // needed because edge batches uses it...
 	// g.kmaxes = move(core);
 
-	getMaxKmax(g.kmax, g.V, m_p);
+	kmaxTime += funcTime([&] {
+		getMaxKmax(g.kmax, g.V, m_p);
+	});
+
 	// cout << "maxkmax = " << g.kmax << " ";
 
 	if (g.kmax+1 != g.lmaxes.size()) {
@@ -1622,15 +1707,19 @@ void maintenanceFast(GraphGPU& g, device_graph_pointers& g_p, device_maintenance
 	klistTime = funcTime([&] {
 		for (degree k = 0; k <= M+1; ++k) {
 			refreshGraphOnGPU(g.V, g_p);
-			auto [_, core] = KList(g.V, g_p, a_p, k);
-			g.lmaxes[k] = move(core);
+			auto l = KListInplace(g.V, g.lmaxes[k], g_p, a_p, k);
+			g.lmax = max(g.lmax, l);
+			// g.lmaxes[k] = move(core);
 		}
 		refreshGraphOnGPU(g.V, g_p); // other stuff might not know degrees are fucked up... lets fix that
 	});
 
 	#ifdef PRINT_MAINTENANCE_STATS
-	cout << "insert: " << insertTime << " kmax: " << kmaxTime << " klist: " << klistTime << endl;
+	cout << "insert: " << insertTime.count() << "ms "
+		<< " kmax: " << kmaxTime.count() << "ms "
+		<< " klist: " << klistTime.count() << "ms " << endl;
 	#endif
+	return {insertTime, kmaxTime, klistTime};
 }
 
 // __global__ void reduceSum(int* array, int* deviceSum, unsigned V) {
@@ -1682,7 +1771,6 @@ int main(int argc, char *argv[]) {
 	// cout << sum << endl;
 	// return 0;
 
-
 	// generateGraph("../dataset/random", 5, 15);
 	// const string filename = "../dataset/random";
 
@@ -1690,27 +1778,57 @@ int main(int argc, char *argv[]) {
 	// const string filename = "../dataset/digraphWithEmpty";
 	// const string filename = "../dataset/example2";
 	// const string filename = "../dataset/congress";
+	// const string filename = "../dataset/email-scramble";
 	// const string filename = "../dataset/wiki_vote";
 	// const string filename = "../dataset/wiki_vote-scramble"; //2.5 times speedup, due to better batching
+
 	// const string filename = "../dataset/email";
-	// const string filename = "../dataset/email-scramble";
+	// const string filename = "../dataset/slashdot";
 	// const string filename = "../dataset/amazon0601";
 	// const string filename = "../dataset/pokec"; // dcore = 1.2s
-	// const string filename = "../dataset/live_journal"; // dcore = 25s
-	const string filename = "../dataset/hollywood"; // 2156s load time lol, 554s decomp time (474s second time), more than 50gb ram used (23gb for this program probably), pruned 195347 vertices (8.96%)
+	// const string filename = "../dataset/enwiki-2024";
+	const string filename = "../dataset/live_journal"; // dcore = 25s
+	// const string filename = "../dataset/hollywood-2009";
+	// const string filename = "../dataset/hollywood"; // 2156s load time lol, 554s decomp time (474s second time), more than 50gb ram used (23gb for this program probably), pruned 195347 vertices (8.96%)
+	// const string filename = "../dataset/uk_2002";
+	// const string filename = "../dataset/indochina-2004";
 
-	auto start = chrono::steady_clock::now();
+	auto start = chrono::high_resolution_clock::now();
 
     Graph g(filename);
     cout << "> " << filename  << " V: " << g.V << " E: " << g.E << " AVG_DEG: " << g.E / g.V << endl;
 
+	// /*ofstream bin;
+	// bin.open(filename + string("-insert"), ios::out);
+	// for (unsigned i = 0; i < 100; i++) {
+	// 	auto edge = g.getRandomInsertEdge();
+	// 	bin << edge.first << " " << edge.second << endl;
+	// }
+	// bin.close();
+	// // return 0;*/
+
+	// vector<pair<vertex, vertex>> insertEdges;
+	// ifstream bin2;
+	// bin2.open(filename + string("-insert"), ios::in);
+	// vertex s, t;
+	// string line;
+	// for (unsigned i = 0; i < 100; i++) {
+	// 	getline(bin2, line);
+	// 	istringstream iss(line);
+	// 	iss >> s >> t;
+	// 	insertEdges.push_back({s, t});
+	// }
+	// bin2.close();
 
 	if (!readDecompFile(g, filename)) {
 		cout << "Calculating decomp file..." << endl;
-		auto res = dcore(g);
+		for (int i = 0; i < 6; i++)
+			auto res = dcore(g);
 		writeDecompFile(g, filename);
 	}
-	// writeDCoreResultsText(g.lmaxes, "../results/before.txt", 7);
+
+	writeDecompFileCPU(g, filename);
+	// return 0;
 
 	// writeDCoreResultsText(res, "../results/cudares.txt", 16);
 	// writeDCoreResults(res, "../results/cudares");
@@ -1718,18 +1836,18 @@ int main(int argc, char *argv[]) {
 	// compareDCoreResults("../results/cudares", "../results/amazon0601");
 
 	device_graph_pointers g_p;
-	unsigned graph_mem_size = allocateDeviceGraphMemory(g, g_p);
+	unsigned long long graph_mem_size = allocateDeviceGraphMemory(g, g_p);
 	device_accessory_pointers a_p;
-	unsigned accessory_mem_size = allocateDeviceAccessoryMemory(g, a_p);
+	unsigned long long accessory_mem_size = allocateDeviceAccessoryMemory(g, a_p);
 	device_maintenance_pointers m_p;
-	unsigned maintenance_mem_size = allocateDeviceMaintenanceMemory(g, m_p);
+	unsigned long long maintenance_mem_size = allocateDeviceMaintenanceMemory(g, m_p);
 	cout << "Allocated memory\t\t" << calculateSize(graph_mem_size + accessory_mem_size + maintenance_mem_size) << "\tgraph: " << calculateSize(graph_mem_size) << " accessory: " << calculateSize(accessory_mem_size) << " maintenance: " << calculateSize(maintenance_mem_size) << endl;
 
 // #define SINGLE_INSERT
 // #define SINGLE_DELETE
 // #define SINGLE_INSERT_RANDOM
 // #define SINGLE_DELETE_RANDOM
-#define SPEED_TEST
+// #define SPEED_TEST
 // #define STEP_TEST
 
 	// ***********************************************r*******************************
@@ -1932,9 +2050,9 @@ int main(int argc, char *argv[]) {
 	// ***********************************************r*******************************
 #ifdef SPEED_TEST
 	assert(OFFSET_GAP >= 1);	// gapsize needs to be atleast 1;
-	unsigned inserts = 10;
-	unsigned batchSize = 1;
-	cout << "Doing " << inserts << " random insertions..." << endl;
+	unsigned inserts = 1;
+	unsigned batchSize = 100;
+	cout << "Doing " << inserts << " random insertions of batchsize " << batchSize << "..." << endl;
 
 	#ifdef SINGlE_INSERT_CHECK
 	Graph gc(filename);
@@ -1946,20 +2064,26 @@ int main(int argc, char *argv[]) {
 	GraphGPU m(g, g_p);
 	moveGraphToDevice(g, g_p);
 
-	auto maintTotalStart = chrono::steady_clock::now();
+	auto maintTotalStart = chrono::high_resolution_clock::now();
+	vector<tuple<chrono::duration<double, milli>,chrono::duration<double, milli>,chrono::duration<double, milli>,chrono::duration<double, milli>>> maintTimes;
 	auto totalErrors = 0;
 	for (unsigned i = 0; i < inserts; ++i) {
 		auto edgeToAdd = vector<pair<vertex, vertex>>();
 		for (unsigned j = 0; j < batchSize; ++j)
-			edgeToAdd.push_back(g.getRandomInsertEdge());
+			// edgeToAdd.push_back(insertEdges[i]);
+			edgeToAdd.push_back(insertEdges[j]);
+			// edgeToAdd.push_back(g.getRandomInsertEdge());
+		cout << i+1 << "/" << inserts << endl;
 		if (batchSize == 1)
 			cout << "Inserting " << edgeToAdd[0].first << "->" << edgeToAdd[0].second << endl;
 		else
 			cout << "Inserting " << batchSize << " edges" << endl;
 
-		auto maintStart = chrono::steady_clock::now();
-		maintenanceFast(m, g_p, m_p, a_p, edgeToAdd);
-		cout << "Maintenance step time \t\t" << chrono::duration_cast<chrono::milliseconds>(chrono::steady_clock::now() - maintStart).count() << "ms" << endl;
+		auto maintStart = chrono::high_resolution_clock::now();
+		auto times = maintenanceFast(m, g_p, m_p, a_p, edgeToAdd);
+		auto maintEnd = chrono::high_resolution_clock::now();
+		maintTimes.push_back({maintEnd - maintStart, get<0>(times), get<1>(times), get<2>(times)});
+		cout << "Maintenance step time \t\t" << chrono::duration<double, milli>(maintEnd - maintStart).count() << "ms" << endl;
 
 		#ifdef SINGlE_INSERT_CHECK
 		gc.insertEdgesInPlace(edgeToAdd);
@@ -1991,8 +2115,33 @@ int main(int argc, char *argv[]) {
 		totalErrors += errors;
 		#endif
 	}
-	cout << "Maintenance total time \t\t" << chrono::duration_cast<chrono::milliseconds>(chrono::steady_clock::now() - maintTotalStart).count() << "ms" << endl;
+	#ifdef SINGLE_INSERT_CHECK
 	cout << "found " << totalErrors << " errors" << endl;
+	#endif
+	auto maintTotalEnd = chrono::high_resolution_clock::now();
+	chrono::duration<double, milli> averageTime, averageInsert, averageKmax, averageKlist;
+	for (auto t: maintTimes) {
+		averageTime += get<0>(t);
+		averageInsert += get<1>(t);
+		averageKmax += get<2>(t);
+		averageKlist += get<3>(t);
+	}
+	cout << "Maintenance total time \t\t" << chrono::duration<double, milli>(maintTotalEnd - maintTotalStart).count() << "ms \t"
+		<< "insert: " << averageInsert.count() << "ms "
+		<< "kmax: " << averageKmax.count() << "ms "
+		<< "klist: " << averageKlist.count() << "ms " << endl;
+	averageTime /= inserts;
+	averageInsert /= inserts;
+	averageKmax /= inserts;
+	averageKlist /= inserts;
+	cout << "Average maintenance time\t" << averageTime.count() << "ms \t"
+		<< "insert: " << averageInsert.count() << "ms "
+		<< "kmax: " << averageKmax.count() << "ms "
+		<< "klist: " << averageKlist.count() << "ms " << endl;
+	cout << "Average per edge time\t\t" << (averageTime/batchSize).count() << "ms \t"
+		<< "insert: " << (averageInsert/batchSize).count() << "ms "
+		<< "kmax: " << (averageKmax/batchSize).count() << "ms "
+		<< "klist: " << (averageKlist/batchSize).count() << "ms " << endl;
 #endif
 
 	// ******************************************************************************
@@ -2036,6 +2185,6 @@ int main(int argc, char *argv[]) {
 	cout << "total errors: " << errors << endl;
 #endif
 
-	auto end = chrono::steady_clock::now();
-	cout << "Total time: " << chrono::duration_cast<chrono::milliseconds>(end - start).count() << "ms" << endl;
+	auto end = chrono::high_resolution_clock::now();
+	cout << "Total time: " << chrono::duration<double, milli>(end - start).count() << "ms" << endl;
 }

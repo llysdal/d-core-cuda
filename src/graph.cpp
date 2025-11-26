@@ -46,14 +46,14 @@ void Graph::insertEdges(const vector<pair<vertex, vertex>>& edgesToBeInserted) {
 	out_neighbors = new vertex[E];
 
 	#pragma omp parallel for
-	for (vertex v = 0; v < V; v++) {
+	for (int v = 0; v < V; v++) {
 		auto it = inEdges[v].begin();
 		for (offset j = in_neighbors_offset[v]; j < in_neighbors_offset[v+1]; j++, it++)
 			in_neighbors[j] = *it;
 	}
 
 	#pragma omp parallel for
-	for (vertex v = 0; v < V; v++) {
+	for (int v = 0; v < V; v++) {
 		auto it = outEdges[v].begin();
 		for (offset j = out_neighbors_offset[v]; j < out_neighbors_offset[v+1]; j++, it++)
 			out_neighbors[j] = *it;
@@ -74,50 +74,37 @@ void Graph::deleteEdges(const vector<pair<vertex, vertex>>& edgesToBeDeleted) {
 	assert(false); //delete edges not implemented
 }
 
+//memcpy not supported
 void Graph::deleteEdgesInPlace(const vector<pair<vertex, vertex>>& edgesToBeDeleted) {
-	// for (vertex v = 0; v < V; v++) {
-	// 	cout << v << " in  offset: " << in_neighbors_offset[v] << " degree: " << in_degrees[v] << endl;
-	// 	cout << v << " out offset: " << out_neighbors_offset[v] << " degree: " << out_degrees[v] << endl;
+	// for (auto &[first, second] : edgesToBeDeleted) {
+	// 	auto outStart = out_neighbors_offset[first];
+	// 	auto outEnd = out_neighbors_offset[first] + out_degrees[first];
+	// 	offset first_offset = -1;
+	// 	for (auto o = outStart; o < outEnd; o++) {
+	// 		if (out_neighbors[o] == second) {
+	// 			first_offset = o;
+	// 			break;
+	// 		}
+	// 	}
+	// 	assert(first_offset != -1); // didnt find edge
+	// 	memcpy(out_neighbors + first_offset, out_neighbors + first_offset + 1,
+	// 		sizeof(vertex)*(out_degrees[first] - (first_offset - out_neighbors_offset[first])));
+	// 	out_degrees[first]--;
+	//
+	// 	auto inStart = in_neighbors_offset[second];
+	// 	auto inEnd = in_neighbors_offset[second] + in_degrees[second];
+	// 	offset second_offset = -1;
+	// 	for (auto o = inStart; o < inEnd; o++) {
+	// 		if (in_neighbors[o] == first) {
+	// 			second_offset = o;
+	// 			break;
+	// 		}
+	// 	}
+	// 	assert(second_offset != -1); // didnt find edge
+	// 	memcpy(in_neighbors + second_offset, in_neighbors + second_offset + 1,
+	// 		sizeof(vertex)*(in_degrees[second] - (second_offset - in_neighbors_offset[second])));
+	// 	in_degrees[second]--;
 	// }
-	// cout << "in  neighbors: ";
-	// for (offset o = 0; o < in_neighbors_offset[V]; o++) {
-	// 	cout << in_neighbors[o] << " ";
-	// }
-	// cout << endl;
-	// cout << "out neighbors: ";
-	// for (offset o = 0; o < out_neighbors_offset[V]; o++) {
-	// 	cout << out_neighbors[o] << " ";
-	// }
-	// cout << endl;
-	for (auto &[first, second] : edgesToBeDeleted) {
-		auto outStart = out_neighbors_offset[first];
-		auto outEnd = out_neighbors_offset[first] + out_degrees[first];
-		offset first_offset = -1;
-		for (auto o = outStart; o < outEnd; o++) {
-			if (out_neighbors[o] == second) {
-				first_offset = o;
-				break;
-			}
-		}
-		assert(first_offset != -1); // didnt find edge
-		memcpy(out_neighbors + first_offset, out_neighbors + first_offset + 1,
-			sizeof(vertex)*(out_degrees[first] - (first_offset - out_neighbors_offset[first])));
-		out_degrees[first]--;
-
-		auto inStart = in_neighbors_offset[second];
-		auto inEnd = in_neighbors_offset[second] + in_degrees[second];
-		offset second_offset = -1;
-		for (auto o = inStart; o < inEnd; o++) {
-			if (in_neighbors[o] == first) {
-				second_offset = o;
-				break;
-			}
-		}
-		assert(second_offset != -1); // didnt find edge
-		memcpy(in_neighbors + second_offset, in_neighbors + second_offset + 1,
-			sizeof(vertex)*(in_degrees[second] - (second_offset - in_neighbors_offset[second])));
-		in_degrees[second]--;
-	}
 }
 
 pair<unsigned, vector<pair<vertex, vertex>>> pruneEmptyVertices(unsigned V, vector<pair<vertex, vertex>>& edges) {
@@ -168,6 +155,7 @@ void Graph::readFile(const string& inputFile) {
 	// first line is vertex amount
 	getline(infile, line);
 	V = stoi(line.substr(2, line.length() - 2));
+	// V = 7414865;
 
 	// all the next are edges
 	vertex s,t;
@@ -232,14 +220,14 @@ void Graph::readFile(const string& inputFile) {
 	out_neighbors = new vertex[E + OFFSET_GAP * V];
 
 	#pragma omp parallel for
-	for (vertex v = 0; v < V; v++) {
+	for (int v = 0; v < V; v++) {
 		auto it = inEdges[v].begin();
 		for (offset j = in_neighbors_offset[v]; j < in_neighbors_offset[v] + in_degrees[v]; j++, it++)
 			in_neighbors[j] = *it;
 	}
 
 	#pragma omp parallel for
-	for (vertex v = 0; v < V; v++) {
+	for (int v = 0; v < V; v++) {
 		auto it = outEdges[v].begin();
 		for (offset j = out_neighbors_offset[v]; j < out_neighbors_offset[v] + out_degrees[v]; j++, it++)
 			out_neighbors[j] = *it;
