@@ -19,6 +19,7 @@ add_executable(d_core_cuda ${CPP_SOURCES} ${CUDA_SOURCES} main.cu)
 #add_executable(d_core_cuda ${CPP_SOURCES} main.cpp)
 #add_executable(d_core_cuda ${SOURCES_DCORE} main_dcore.cpp)
 
+#set_target_properties(d_core_cuda PROPERTIES CUDA_ARCHITECTURES "89")
 target_compile_options(d_core_cuda PRIVATE ${OpenMP_CXX_FLAGS})
 target_link_libraries(d_core_cuda PRIVATE OpenMP::OpenMP_CXX)
 set_target_properties(d_core_cuda PROPERTIES CUDA_SEPARABLE_COMPILATION ON)

@@ -12,7 +12,7 @@
 using namespace std;
 
 // #define PRINT_STEPS
-#define PRINT_DCORE_STATS
+// #define PRINT_DCORE_STATS
 #define PRINT_MAINTENANCE_STATS
 
 // #define KEDGE_BATCHING	// good for high batch sizes with low kmax graphs
@@ -31,7 +31,7 @@ using namespace std;
 
 // #define SINGlE_INSERT_CHECK		// check whether the single insert/delete is correct
 
-#define FORCE_RECALCULATE_DCORE		true
+#define FORCE_RECALCULATE_DCORE		false
 #define FORCE_REBUILD_GRAPH			false	// required for non in-place insertion
 #define OFFSET_GAP			1
 
@@ -57,6 +57,7 @@ using namespace std;
 
 
 typedef int degree;
+// typedef short degree;
 typedef unsigned vertex;
 typedef unsigned offset;
 

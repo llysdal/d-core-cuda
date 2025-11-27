@@ -16,6 +16,34 @@ __device__ inline bool atomicTestAndSet(unsigned* adr) {
 	return !atomicCAS(adr, 0, 1);
 }
 
+// __device__ inline short atomicAdd(short* address, short val) {
+// 	short assumed = *address;
+// 	short old = assumed;
+// 	do
+// 	{
+// 		assumed = old;
+// 		old = atomicCAS((unsigned short*)address, assumed, assumed + val);
+// 	} while (assumed != old);
+//
+// 	return old;
+// }
+//
+// __device__ inline short atomicSub(short* address, short val) {
+// 	return atomicAdd(address, -val);
+// }
+//
+// __device__ inline short int atomicMax(short int* address, short int val) {
+// 	short assumed = *address;
+// 	short old = assumed;
+// 	do
+// 	{
+// 		assumed = old;
+// 		old = atomicCAS((unsigned short*)address, assumed, assumed > val ? assumed : val);
+// 	} while (assumed != old);
+//
+// 	return old;
+// }
+
 // for maintenance
 __device__ degree hOutIndex(device_maintenance_pointers m_p, vertex v, offset o, degree upperBound) {
 	offset histogramStart = o + v;

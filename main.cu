@@ -350,7 +350,7 @@ __global__ void findMValue(device_graph_pointers g_p, device_maintenance_pointer
 		vertex edgeFrom = g_p.modified_edges[e*2];
 		vertex edgeTo = g_p.modified_edges[e*2+1];
 
-		degree value = min(m_p.k_max[edgeFrom], m_p.k_max[edgeTo]);
+		degree value = m_p.k_max[edgeFrom] < m_p.k_max[edgeTo] ? m_p.k_max[edgeFrom] : m_p.k_max[edgeTo];
 
 		atomicMax(m_p.m_value, value);
 	}
@@ -611,7 +611,7 @@ __global__ void kmaxRefineHIndex(device_graph_pointers g_p, device_maintenance_p
 			if (o + LANE_ID >= end) continue;
 			vertex neighbor = g_p.in_neighbors[o + LANE_ID];
 
-			atomicAdd(m_p.histograms + (histogramStart + min(m_p.k_max[v],m_p.k_max[neighbor])), 1);
+			atomicAdd(m_p.histograms + (histogramStart + (m_p.k_max[v] < m_p.k_max[neighbor] ? m_p.k_max[v] : m_p.k_max[neighbor])), 1);
 		}
 		__syncwarp();
 
@@ -1787,11 +1787,11 @@ int main(int argc, char *argv[]) {
 	// const string filename = "../dataset/amazon0601";
 	// const string filename = "../dataset/pokec"; // dcore = 1.2s
 	// const string filename = "../dataset/enwiki-2024";
-	const string filename = "../dataset/live_journal"; // dcore = 25s
+	// const string filename = "../dataset/live_journal"; // dcore = 25s
 	// const string filename = "../dataset/hollywood-2009";
 	// const string filename = "../dataset/hollywood"; // 2156s load time lol, 554s decomp time (474s second time), more than 50gb ram used (23gb for this program probably), pruned 195347 vertices (8.96%)
 	// const string filename = "../dataset/uk_2002";
-	// const string filename = "../dataset/indochina-2004";
+	const string filename = "../dataset/indochina-2004";
 
 	auto start = chrono::high_resolution_clock::now();
 
@@ -1805,30 +1805,30 @@ int main(int argc, char *argv[]) {
 	// 	bin << edge.first << " " << edge.second << endl;
 	// }
 	// bin.close();
-	// // return 0;*/
+	// return 0;*/
 
-	// vector<pair<vertex, vertex>> insertEdges;
-	// ifstream bin2;
-	// bin2.open(filename + string("-insert"), ios::in);
-	// vertex s, t;
-	// string line;
-	// for (unsigned i = 0; i < 100; i++) {
-	// 	getline(bin2, line);
-	// 	istringstream iss(line);
-	// 	iss >> s >> t;
-	// 	insertEdges.push_back({s, t});
-	// }
-	// bin2.close();
+	vector<pair<vertex, vertex>> insertEdges;
+	ifstream bin2;
+	bin2.open(filename + string("-insert"), ios::in);
+	vertex s, t;
+	string line;
+	for (unsigned i = 0; i < 100; i++) {
+		getline(bin2, line);
+		istringstream iss(line);
+		iss >> s >> t;
+		insertEdges.push_back({s, t});
+	}
+	bin2.close();
 
 	if (!readDecompFile(g, filename)) {
 		cout << "Calculating decomp file..." << endl;
-		for (int i = 0; i < 6; i++)
-			auto res = dcore(g);
+		// for (int i = 0; i < 6; i++)
+			auto& res = dcore(g);
 		writeDecompFile(g, filename);
 	}
 
 	writeDecompFileCPU(g, filename);
-	// return 0;
+	return 0;
 
 	// writeDCoreResultsText(res, "../results/cudares.txt", 16);
 	// writeDCoreResults(res, "../results/cudares");
@@ -2050,8 +2050,8 @@ int main(int argc, char *argv[]) {
 	// ***********************************************r*******************************
 #ifdef SPEED_TEST
 	assert(OFFSET_GAP >= 1);	// gapsize needs to be atleast 1;
-	unsigned inserts = 1;
-	unsigned batchSize = 100;
+	unsigned inserts = 100;
+	unsigned batchSize = 1;
 	cout << "Doing " << inserts << " random insertions of batchsize " << batchSize << "..." << endl;
 
 	#ifdef SINGlE_INSERT_CHECK
@@ -2070,8 +2070,8 @@ int main(int argc, char *argv[]) {
 	for (unsigned i = 0; i < inserts; ++i) {
 		auto edgeToAdd = vector<pair<vertex, vertex>>();
 		for (unsigned j = 0; j < batchSize; ++j)
-			// edgeToAdd.push_back(insertEdges[i]);
-			edgeToAdd.push_back(insertEdges[j]);
+			edgeToAdd.push_back(insertEdges[i]);
+			// edgeToAdd.push_back(insertEdges[j]);
 			// edgeToAdd.push_back(g.getRandomInsertEdge());
 		cout << i+1 << "/" << inserts << endl;
 		if (batchSize == 1)

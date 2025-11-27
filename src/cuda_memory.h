@@ -34,20 +34,20 @@ void moveGraphToDevice(Graph& g, device_graph_pointers& g_p) {
 	cudaMemcpy(g_p.out_neighbors, g.out_neighbors, (g.E + OFFSET_GAP * g.V) * sizeof(vertex), cudaMemcpyHostToDevice);
 	cudaMemcpy(g_p.in_neighbors_offset, g.in_neighbors_offset, (g.V+1) * sizeof(offset), cudaMemcpyHostToDevice);
 	cudaMemcpy(g_p.out_neighbors_offset, g.out_neighbors_offset, (g.V+1) * sizeof(offset), cudaMemcpyHostToDevice);
-	cudaMemcpy(g_p.in_degrees, g.in_degrees, g.V * sizeof(offset), cudaMemcpyHostToDevice);
-	cudaMemcpy(g_p.out_degrees, g.out_degrees, g.V * sizeof(offset), cudaMemcpyHostToDevice);
-	cudaMemcpy(g_p.in_degrees_orig, g.in_degrees, g.V * sizeof(offset), cudaMemcpyHostToDevice);
-	cudaMemcpy(g_p.out_degrees_orig, g.out_degrees, g.V * sizeof(offset), cudaMemcpyHostToDevice);
+	cudaMemcpy(g_p.in_degrees, g.in_degrees, g.V * sizeof(degree), cudaMemcpyHostToDevice);
+	cudaMemcpy(g_p.out_degrees, g.out_degrees, g.V * sizeof(degree), cudaMemcpyHostToDevice);
+	cudaMemcpy(g_p.in_degrees_orig, g.in_degrees, g.V * sizeof(degree), cudaMemcpyHostToDevice);
+	cudaMemcpy(g_p.out_degrees_orig, g.out_degrees, g.V * sizeof(degree), cudaMemcpyHostToDevice);
 }
 
 void refreshGraphOnGPU(Graph& g, device_graph_pointers& g_p) {
-	cudaMemcpy(g_p.in_degrees, g.in_degrees, g.V * sizeof(offset), cudaMemcpyHostToDevice);
-	cudaMemcpy(g_p.out_degrees, g.out_degrees, g.V * sizeof(offset), cudaMemcpyHostToDevice);
+	cudaMemcpy(g_p.in_degrees, g.in_degrees, g.V * sizeof(degree), cudaMemcpyHostToDevice);
+	cudaMemcpy(g_p.out_degrees, g.out_degrees, g.V * sizeof(degree), cudaMemcpyHostToDevice);
 }
 
 void refreshGraphOnGPU(unsigned V, device_graph_pointers& g_p) {
-	cudaMemcpy(g_p.in_degrees, g_p.in_degrees_orig, V * sizeof(offset), cudaMemcpyDeviceToDevice);
-	cudaMemcpy(g_p.out_degrees, g_p.out_degrees_orig, V * sizeof(offset), cudaMemcpyDeviceToDevice);
+	cudaMemcpy(g_p.in_degrees, g_p.in_degrees_orig, V * sizeof(degree), cudaMemcpyDeviceToDevice);
+	cudaMemcpy(g_p.out_degrees, g_p.out_degrees_orig, V * sizeof(degree), cudaMemcpyDeviceToDevice);
 }
 
 

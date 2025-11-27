@@ -154,8 +154,8 @@ void Graph::readFile(const string& inputFile) {
 
 	// first line is vertex amount
 	getline(infile, line);
-	V = stoi(line.substr(2, line.length() - 2));
-	// V = 7414865;
+	// V = stoi(line.substr(2, line.length() - 2));
+	V = 7414865;
 
 	// all the next are edges
 	vertex s,t;
@@ -202,10 +202,20 @@ void Graph::readFile(const string& inputFile) {
 
 	in_neighbors_offset = new offset[V+1];
 	in_neighbors_offset[0] = 0;
-	partial_sum(in_degrees, in_degrees+V, in_neighbors_offset+1);
+	offset sum = 0;
+	for (unsigned v = 0; v < V; v++) {
+		sum += in_degrees[v];
+		in_neighbors_offset[v+1] = sum;
+	}
+	// partial_sum(in_degrees, in_degrees+V, in_neighbors_offset+1);
 	out_neighbors_offset = new offset[V+1];
 	out_neighbors_offset[0] = 0;
-	partial_sum(out_degrees, out_degrees+V, out_neighbors_offset+1);
+	sum = 0;
+	for (unsigned v = 0; v < V; v++) {
+		sum += out_degrees[v];
+		out_neighbors_offset[v+1] = sum;
+	}
+	// partial_sum(out_degrees, out_degrees+V, out_neighbors_offset+1);
 
 	if (OFFSET_GAP > 0) {
 		for (int i=0; i<V; i++) {
@@ -215,18 +225,17 @@ void Graph::readFile(const string& inputFile) {
 	}
 
 	cout << "> Set up offsets..." << endl;
-
 	in_neighbors = new vertex[E + OFFSET_GAP * V];
 	out_neighbors = new vertex[E + OFFSET_GAP * V];
 
-	#pragma omp parallel for
+	// #pragma omp parallel for
 	for (int v = 0; v < V; v++) {
 		auto it = inEdges[v].begin();
 		for (offset j = in_neighbors_offset[v]; j < in_neighbors_offset[v] + in_degrees[v]; j++, it++)
 			in_neighbors[j] = *it;
 	}
 
-	#pragma omp parallel for
+	// #pragma omp parallel for
 	for (int v = 0; v < V; v++) {
 		auto it = outEdges[v].begin();
 		for (offset j = out_neighbors_offset[v]; j < out_neighbors_offset[v] + out_degrees[v]; j++, it++)
@@ -238,6 +247,15 @@ void Graph::readFile(const string& inputFile) {
 	kmaxes = vector<degree>(V);
 	lmaxes = vector<vector<degree>>();
 	lmaxes.emplace_back(vector<degree>(V));
+}
+
+void Graph::writeFile(const string& outputFile) {
+	ofstream outfile;
+	outfile.open(outputFile + string("-pruned"), ios::out);
+	outfile << "# " << V << endl;
+	for (auto edge: edges)
+		outfile << edge.first << " " << edge.second << endl;
+	outfile.close();
 }
 
 void Graph::writeBinary(const string& inputFile) {

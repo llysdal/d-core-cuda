@@ -81,8 +81,8 @@ bool readDecompFile(Graph& g, const string& filename) {
 	}
 	cout << "Using decomp file..." << endl;
 	auto decompReadStart = chrono::steady_clock::now();
-	decompin.read(reinterpret_cast<char*>(&g.kmax), sizeof(unsigned));
-	decompin.read(reinterpret_cast<char*>(&g.lmax), sizeof(unsigned));
+	decompin.read(reinterpret_cast<char*>(&g.kmax), sizeof(degree));
+	decompin.read(reinterpret_cast<char*>(&g.lmax), sizeof(degree));
 	decompin.read(reinterpret_cast<char*>(g.kmaxes.data()), static_cast<streamsize>(g.V * sizeof(degree)));
 	g.lmaxes.resize(g.kmax+1);
 	for (unsigned k = 0; k <= g.kmax; ++k) {
@@ -98,11 +98,13 @@ bool readDecompFile(Graph& g, const string& filename) {
 void writeDecompFile(Graph& g, const string& filename) {
 	ofstream decompout;
 	decompout.open(filename + ".decomp", ios::binary | ios::out);
-	decompout.write(reinterpret_cast<char*>(&g.kmax), sizeof(unsigned));
-	decompout.write(reinterpret_cast<char*>(&g.lmax), sizeof(unsigned));
+	decompout.write(reinterpret_cast<char*>(&g.kmax), sizeof(degree));
+	decompout.write(reinterpret_cast<char*>(&g.lmax), sizeof(degree));
 	decompout.write(reinterpret_cast<char*>(g.kmaxes.data()), static_cast<streamsize>(g.V * sizeof(degree)));
-	for (unsigned k = 0; k <= g.kmax; ++k)
+	for (unsigned k = 0; k <= g.kmax; ++k) {
 		decompout.write(reinterpret_cast<char*>(g.lmaxes[k].data()), static_cast<streamsize>(g.V * sizeof(degree)));
+		decompout.flush();
+	}
 	decompout.close();
 }
 void writeDecompFileCPU(Graph& g, const string& filename) {

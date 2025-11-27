@@ -30,7 +30,8 @@ public:
 	void deleteEdges(const vector<pair<vertex, vertex>>& edgesToBeDeleted) override;
 	void deleteEdgesInPlace(const vector<pair<vertex, vertex>>& edgesToBeDeleted) override;
 	void readFile(const string& inputFile);
-	void writeBinary(const string& inputFile);
+	void writeFile(const string& outputFile);
+	void writeBinary(const string& outputFile);
 	bool readBinary(const string& inputFile);
 	~Graph();
 };
