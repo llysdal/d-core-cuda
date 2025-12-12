@@ -1,4 +1,5 @@
-decompositions
+*********************************** D-core Decomposition times
+kmax time, lmax time, total time
 
 wiki_vote
 9.50786ms 12.5109ms 22.0188ms
@@ -7,11 +8,6 @@ wiki_vote
 9.54956ms 12.5423ms 22.0918ms
 9.59333ms 12.5004ms 22.0937ms
 9.453892 12.50926
-
-
-
-
-
 
 email
 12.65ms   81.9879ms 94.6379ms
@@ -69,9 +65,9 @@ uk
 271.435ms 266449ms 266721ms
 259.4362 261710.4
 
+************ with BLOCKCOUNT 256 and inplace optimization
+kmax time, lmax time, total time
 
-
-BLOCKCOUNT 256 and inplace optimization
 email
 1.99224 54.7192 56.7114
 1.88171 52.5788 54.4605
@@ -148,7 +144,11 @@ indochina
 300.966 1.64818e+06 1.64848e+06
 
 
-INSERTS 256 block count
+*********************************** D-core Maintenance times
+************ INSERTS with block count 256
+insert time, kmax time, klist time,
+total time
+CPU insert time / speedup x CPU insert
 
 email
 insert: 0.117628ms kmax: 0.185621ms klist: 4.4181ms
@@ -199,7 +199,8 @@ insert: 0.145012ms kmax: 301.343ms klist: 1120.7ms
 1648480/ 1159.23358154
 
 
-INSERTS 256 block count BATCH (first kmax then kedge)
+************ BATCH INSERTS with block count 256
+(first kmax then kedge)
 
 email
 insert: 7.16829ms kmax: 16.0752ms klist: 11.8729ms
@@ -289,7 +290,7 @@ insert: 0.0891455ms kmax: 104.695ms klist: 27.2446ms
 
 
 
-CPU INSERT less generous
+************ CPU INSERT less generous
 email
 196.130463
 
@@ -320,7 +321,7 @@ uk2002
 indochina
 187371.43057
 
-CPU INSERT generous
+************ CPU INSERT generous
 email
 93.098699
 
