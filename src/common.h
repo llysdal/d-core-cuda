@@ -15,8 +15,8 @@ using namespace std;
 // #define PRINT_DCORE_STATS
 #define PRINT_MAINTENANCE_STATS
 
-// #define KEDGE_BATCHING	// good for high batch sizes with low kmax graphs
-#define KMAX_BATCHING	// good for low batch sizes with high kmax graphs
+#define KEDGE_BATCHING	// good for high batch sizes with low kmax graphs
+// #define KMAX_BATCHING	// good for low batch sizes with high kmax graphs
 
 // #define HINDEX_NOWARP
 #define HINDEX_WARP	//10x speedup!! (tested with email single add 47->46) [3x speedup on livejournal 2->1]

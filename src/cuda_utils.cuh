@@ -27,7 +27,7 @@ __device__ inline bool atomicTestAndSet(unsigned* adr) {
 //
 // 	return old;
 // }
-//
+
 // __device__ inline short atomicSub(short* address, short val) {
 // 	return atomicAdd(address, -val);
 // }
@@ -51,6 +51,15 @@ __device__ degree hOutIndex(device_maintenance_pointers m_p, vertex v, offset o,
 	degree cnt = 0;
 	for (int i = upperBound; i >= 0; i--) {
 		cnt += m_p.histograms[histogramStart + i];
+		if (cnt >= i) return i;
+	}
+	return upperBound;
+}
+
+__device__ degree hOutIndexStack(degree* hist, degree upperBound) {
+	degree cnt = 0;
+	for (int i = upperBound; i >= 0; i--) {
+		cnt += *(hist + i);
 		if (cnt >= i) return i;
 	}
 	return upperBound;

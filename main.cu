@@ -603,6 +603,7 @@ __global__ void kmaxRefineHIndex(device_graph_pointers g_p, device_maintenance_p
 		for (offset o = histogramStart; o <= histogramEnd; o += WARP_SIZE)
 			if (o + LANE_ID <= histogramEnd)
 				m_p.histograms[o + LANE_ID] = 0;
+
 		__syncwarp();
 
 		offset start = g_p.in_neighbors_offset[v];
@@ -619,6 +620,7 @@ __global__ void kmaxRefineHIndex(device_graph_pointers g_p, device_maintenance_p
 		degree tmp_h_index = 0;
 		if (IS_MAIN_IN_WARP)
 			tmp_h_index = hOutIndex(m_p, v, g_p.in_neighbors_offset[v], m_p.k_max[v]);
+
 		__syncwarp();
 
 		if (IS_MAIN_IN_WARP) {
@@ -628,6 +630,32 @@ __global__ void kmaxRefineHIndex(device_graph_pointers g_p, device_maintenance_p
 			}
 		}
 	}
+
+	// for (unsigned base = 0; base < V; base += THREAD_COUNT) {
+	// 	vertex v = base + GLOBAL_THREAD_ID;
+	// 	if (v >= V) break;
+	//
+	// 	if (!m_p.compute[v]) continue;
+	//
+	// 	degree* hist = (degree*) alloca((m_p.k_max[v]+1) * sizeof(degree));
+	// 	if (hist == nullptr) printf("out of mem");
+	//
+	// 	for (int i = 0; i <= m_p.k_max[v]; i++)
+	// 		*(hist + i) = 0;
+	//
+	// 	offset start = g_p.in_neighbors_offset[v];
+	// 	offset end = start + g_p.in_degrees[v];
+	// 	for (offset o = start; o < end; o += 1) {
+	// 		*(hist + min(m_p.k_max[v], m_p.k_max[g_p.in_neighbors[o]])) += 1;
+	// 	}
+	//
+	// 	auto tmp_h_index = hOutIndexStack(hist, m_p.k_max[v]);
+	//
+	// 	if (tmp_h_index < m_p.k_max[v]) {
+	// 		m_p.k_max[v] = tmp_h_index;
+	// 		localFlag = true;
+	// 	}
+	// }
 
 	__syncthreads();
 	if (IS_MAIN_THREAD && localFlag)
@@ -1790,13 +1818,13 @@ int main(int argc, char *argv[]) {
 	// const string filename = "../dataset/live_journal"; // dcore = 25s
 	// const string filename = "../dataset/hollywood-2009";
 	// const string filename = "../dataset/hollywood"; // 2156s load time lol, 554s decomp time (474s second time), more than 50gb ram used (23gb for this program probably), pruned 195347 vertices (8.96%)
-	// const string filename = "../dataset/uk_2002";
-	const string filename = "../dataset/indochina-2004";
+	const string filename = "../dataset/uk_2002";
+	// const string filename = "../dataset/indochina-2004";
 
 	auto start = chrono::high_resolution_clock::now();
 
-    Graph g(filename);
-    cout << "> " << filename  << " V: " << g.V << " E: " << g.E << " AVG_DEG: " << g.E / g.V << endl;
+	Graph g(filename);
+	cout << "> " << filename  << " V: " << g.V << " E: " << g.E << " AVG_DEG: " << g.E / g.V << endl;
 
 	// /*ofstream bin;
 	// bin.open(filename + string("-insert"), ios::out);
@@ -1823,12 +1851,12 @@ int main(int argc, char *argv[]) {
 	if (!readDecompFile(g, filename)) {
 		cout << "Calculating decomp file..." << endl;
 		// for (int i = 0; i < 6; i++)
-			auto& res = dcore(g);
+		auto& res = dcore(g);
 		writeDecompFile(g, filename);
 	}
 
-	writeDecompFileCPU(g, filename);
-	return 0;
+	// writeDecompFileCPU(g, filename);
+	// return 0;
 
 	// writeDCoreResultsText(res, "../results/cudares.txt", 16);
 	// writeDCoreResults(res, "../results/cudares");
@@ -1843,12 +1871,12 @@ int main(int argc, char *argv[]) {
 	unsigned long long maintenance_mem_size = allocateDeviceMaintenanceMemory(g, m_p);
 	cout << "Allocated memory\t\t" << calculateSize(graph_mem_size + accessory_mem_size + maintenance_mem_size) << "\tgraph: " << calculateSize(graph_mem_size) << " accessory: " << calculateSize(accessory_mem_size) << " maintenance: " << calculateSize(maintenance_mem_size) << endl;
 
-// #define SINGLE_INSERT
-// #define SINGLE_DELETE
-// #define SINGLE_INSERT_RANDOM
-// #define SINGLE_DELETE_RANDOM
-// #define SPEED_TEST
-// #define STEP_TEST
+	// #define SINGLE_INSERT
+	// #define SINGLE_DELETE
+	// #define SINGLE_INSERT_RANDOM
+	// #define SINGLE_DELETE_RANDOM
+#define SPEED_TEST
+	// #define STEP_TEST
 
 	// ***********************************************r*******************************
 #ifdef SINGLE_INSERT
@@ -1897,47 +1925,47 @@ int main(int argc, char *argv[]) {
 	}
 #endif
 
-		// ***********************************************r*******************************
+	// ***********************************************r*******************************
 #ifdef SINGLE_DELETE
-		// vector<pair<vertex, vertex>> edgeToDelete = {{7, 5}};	// digraph
-		// vector<pair<vertex, vertex>> edgeToDelete = {{3, 30}};	// wiki_vote
-		// vector<pair<vertex, vertex>> edgeToDelete = {{1, 44}};	// email
-		// vector<pair<vertex, vertex>> edgeToDelete = {{0, 1}};	// hollywood (M+1=7)
-		// vector<pair<vertex, vertex>> edgeToDelete = {{13, 12}};	// hollywood (M+1=38)
-		vector<pair<vertex, vertex>> edgeToDelete = {{323, 343}};// hollywood (M+1=60)
-		// vector<pair<vertex, vertex>> edgeToDelete = {};
+	// vector<pair<vertex, vertex>> edgeToDelete = {{7, 5}};	// digraph
+	// vector<pair<vertex, vertex>> edgeToDelete = {{3, 30}};	// wiki_vote
+	// vector<pair<vertex, vertex>> edgeToDelete = {{1, 44}};	// email
+	// vector<pair<vertex, vertex>> edgeToDelete = {{0, 1}};	// hollywood (M+1=7)
+	// vector<pair<vertex, vertex>> edgeToDelete = {{13, 12}};	// hollywood (M+1=38)
+	vector<pair<vertex, vertex>> edgeToDelete = {{323, 343}};// hollywood (M+1=60)
+	// vector<pair<vertex, vertex>> edgeToDelete = {};
 
-		auto maintStart = chrono::steady_clock::now();
-		maintenance(g, g_p, m_p, edgeToDelete, true, true);
-		cout << "Maintenance total time \t\t" << chrono::duration_cast<chrono::milliseconds>(chrono::steady_clock::now() - maintStart).count() << "ms" << endl;
+	auto maintStart = chrono::steady_clock::now();
+	maintenance(g, g_p, m_p, edgeToDelete, true, true);
+	cout << "Maintenance total time \t\t" << chrono::duration_cast<chrono::milliseconds>(chrono::steady_clock::now() - maintStart).count() << "ms" << endl;
 
-		if (!SINGlE_INSERT_SKIP_CHECK) {
-			cout << "Checking correctness.." << endl;
-			auto checkStart = chrono::steady_clock::now();
-			auto comp = checkDCore(g, g_p, a_p);
-			cout << "Comparison DCore generated\t" << chrono::duration_cast<chrono::milliseconds>(chrono::steady_clock::now() - checkStart).count() << "ms" << endl;
+	if (!SINGlE_INSERT_SKIP_CHECK) {
+		cout << "Checking correctness.." << endl;
+		auto checkStart = chrono::steady_clock::now();
+		auto comp = checkDCore(g, g_p, a_p);
+		cout << "Comparison DCore generated\t" << chrono::duration_cast<chrono::milliseconds>(chrono::steady_clock::now() - checkStart).count() << "ms" << endl;
 
-			cout << "Checking kmax... ";
-			auto errors = 0;
+		cout << "Checking kmax... ";
+		auto errors = 0;
+		for (vertex v = 0; v < g.V; ++v) {
+			if (g.kmaxes[v] != comp.first[v]) {
+				cout << "mismatching kmax["<<v<<"] " << g.kmaxes[v] << "!=" << comp.first[v] << endl;
+				errors++;
+			}
+		}
+		cout << "found " << errors << " errors" << endl;
+		errors = 0;
+		cout << "Checking lmax... ";
+		for (degree k = 0; k < g.lmaxes.size(); ++k) {
 			for (vertex v = 0; v < g.V; ++v) {
-				if (g.kmaxes[v] != comp.first[v]) {
-					cout << "mismatching kmax["<<v<<"] " << g.kmaxes[v] << "!=" << comp.first[v] << endl;
+				if (g.lmaxes[k][v] != comp.second[k][v]) {
+					cout << "mismatching lmax["<<k<<"]["<<v<<"] " << g.lmaxes[k][v] << "!=" << comp.second[k][v] << endl;
 					errors++;
 				}
 			}
-			cout << "found " << errors << " errors" << endl;
-			errors = 0;
-			cout << "Checking lmax... ";
-			for (degree k = 0; k < g.lmaxes.size(); ++k) {
-				for (vertex v = 0; v < g.V; ++v) {
-					if (g.lmaxes[k][v] != comp.second[k][v]) {
-						cout << "mismatching lmax["<<k<<"]["<<v<<"] " << g.lmaxes[k][v] << "!=" << comp.second[k][v] << endl;
-						errors++;
-					}
-				}
-			}
-			cout << "found " << errors << " errors" << endl;
 		}
+		cout << "found " << errors << " errors" << endl;
+	}
 #endif
 
 	// ***********************************************r*******************************
@@ -1961,7 +1989,7 @@ int main(int argc, char *argv[]) {
 		maintenance(g, g_p, m_p, a_p, edgeToAdd, false, true);
 		cout << "Maintenance step time \t\t" << chrono::duration_cast<chrono::milliseconds>(chrono::steady_clock::now() - maintStart).count() << "ms" << endl;
 
-		#ifdef SINGlE_INSERT_CHECK
+#ifdef SINGlE_INSERT_CHECK
 		cout << "Checking correctness.." << endl;
 		auto checkStart = chrono::steady_clock::now();
 		auto comp = checkDCore(g, g_p, a_p);
@@ -1988,13 +2016,13 @@ int main(int argc, char *argv[]) {
 		}
 		cout << "found " << errors << " errors" << endl;
 		totalErrors += errors;
-		#endif
+#endif
 	}
 	cout << "Maintenance total time \t\t" << chrono::duration_cast<chrono::milliseconds>(chrono::steady_clock::now() - maintTotalStart).count() << "ms" << endl;
 	cout << "found " << totalErrors << " errors" << endl;
 #endif
 
-		// ***********************************************r*******************************
+	// ***********************************************r*******************************
 #ifdef SINGLE_DELETE_RANDOM
 	unsigned deletes = 1;
 	cout << "Doing " << deletes << " random deletions..." << endl;
@@ -2050,17 +2078,17 @@ int main(int argc, char *argv[]) {
 	// ***********************************************r*******************************
 #ifdef SPEED_TEST
 	assert(OFFSET_GAP >= 1);	// gapsize needs to be atleast 1;
-	unsigned inserts = 100;
+	unsigned inserts = 10;
 	unsigned batchSize = 1;
 	cout << "Doing " << inserts << " random insertions of batchsize " << batchSize << "..." << endl;
 
-	#ifdef SINGlE_INSERT_CHECK
+#ifdef SINGlE_INSERT_CHECK
 	Graph gc(filename);
 	device_graph_pointers gc_p;
 	allocateDeviceGraphMemory(gc, gc_p);
 	device_accessory_pointers ac_p;
 	allocateDeviceAccessoryMemory(gc, ac_p);
-	#endif
+#endif
 	GraphGPU m(g, g_p);
 	moveGraphToDevice(g, g_p);
 
@@ -2071,8 +2099,8 @@ int main(int argc, char *argv[]) {
 		auto edgeToAdd = vector<pair<vertex, vertex>>();
 		for (unsigned j = 0; j < batchSize; ++j)
 			edgeToAdd.push_back(insertEdges[i]);
-			// edgeToAdd.push_back(insertEdges[j]);
-			// edgeToAdd.push_back(g.getRandomInsertEdge());
+		// edgeToAdd.push_back(insertEdges[j]);
+		// edgeToAdd.push_back(g.getRandomInsertEdge());
 		cout << i+1 << "/" << inserts << endl;
 		if (batchSize == 1)
 			cout << "Inserting " << edgeToAdd[0].first << "->" << edgeToAdd[0].second << endl;
@@ -2085,7 +2113,7 @@ int main(int argc, char *argv[]) {
 		maintTimes.push_back({maintEnd - maintStart, get<0>(times), get<1>(times), get<2>(times)});
 		cout << "Maintenance step time \t\t" << chrono::duration<double, milli>(maintEnd - maintStart).count() << "ms" << endl;
 
-		#ifdef SINGlE_INSERT_CHECK
+#ifdef SINGlE_INSERT_CHECK
 		gc.insertEdgesInPlace(edgeToAdd);
 		cout << "Checking correctness.." << endl;
 		auto checkStart = chrono::steady_clock::now();
@@ -2113,13 +2141,13 @@ int main(int argc, char *argv[]) {
 		}
 		cout << "found " << errors << " errors" << endl;
 		totalErrors += errors;
-		#endif
+#endif
 	}
-	#ifdef SINGLE_INSERT_CHECK
+#ifdef SINGLE_INSERT_CHECK
 	cout << "found " << totalErrors << " errors" << endl;
-	#endif
+#endif
 	auto maintTotalEnd = chrono::high_resolution_clock::now();
-	chrono::duration<double, milli> averageTime, averageInsert, averageKmax, averageKlist;
+	chrono::duration<double, milli> averageTime{}, averageInsert{}, averageKmax{}, averageKlist{};
 	for (auto t: maintTimes) {
 		averageTime += get<0>(t);
 		averageInsert += get<1>(t);

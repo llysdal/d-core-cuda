@@ -176,8 +176,12 @@ insert: 0.0986335ms kmax: 3.66009ms klist: 515.304ms
 6116.146/ 11.7852971291
 
 enwiki-2024
+insert: 0.143151ms kmax: 10.1775ms klist: 597.586ms
+607.7635
 
 hollywood-2009
+insert: 0.0957246ms kmax: 1.65319ms klist: 3293.64ms
+3295.29319
 
 hollywood
 insert: 0.103586ms kmax: 3.05192ms klist: 5531.97ms
@@ -193,3 +197,156 @@ indochina
 insert: 0.145012ms kmax: 301.343ms klist: 1120.7ms
 1422.043
 1648480/ 1159.23358154
+
+
+INSERTS 256 block count BATCH (first kmax then kedge)
+
+email
+insert: 7.16829ms kmax: 16.0752ms klist: 11.8729ms
+insert: 0.0716829ms kmax: 0.160752ms klist: 0.118729ms
+0
+insert: 5.65532ms kmax: 2.38828ms klist: 11.9945ms
+insert: 0.0565532ms kmax: 0.0238828ms klist: 0.119945m
+0.1438278
+0.0001438278
+
+slashdot
+insert: 6.63861ms kmax: 1.44595ms klist: 66.1361ms
+insert: 0.0663861ms kmax: 0.0144595ms klist: 0.661361m
+0.6758205
+0.0006758205
+insert: 6.87532ms kmax: 5.15874ms klist: 66.0002ms
+insert: 0.0687532ms kmax: 0.0515874ms klist: 0.660002m
+
+amazon
+insert: 5.91461ms kmax: 40.023ms klist: 11.6887ms
+insert: 0.0591461ms kmax: 0.40023ms klist: 0.116887ms
+0
+insert: 6.64984ms kmax: 8.55184ms klist: 11.7435ms
+insert: 0.0664984ms kmax: 0.0855184ms klist: 0.117435m
+0.2029534
+0.0002029534
+
+pokec
+insert: 5.96194ms kmax: 266.164ms klist: 220.314ms
+insert: 0.0596194ms kmax: 2.66164ms klist: 2.20314ms
+0
+insert: 6.69001ms kmax: 159.076ms klist: 222.38ms
+insert: 0.0669001ms kmax: 1.59076ms klist: 2.2238ms
+3.81456
+0.00381456
+
+enwiki
+insert: 5.68226ms kmax: 566.002ms klist: 2576.9ms
+insert: 0.0568226ms kmax: 5.66002ms klist: 25.769ms
+31.42902
+0.03142902
+insert: 6.71973ms kmax: 724.196ms klist: 2970.19ms
+insert: 0.0671973ms kmax: 7.24196ms klist: 29.7019ms
+
+live journal
+insert: 6.59915ms kmax: 156.052ms klist: 1094ms
+insert: 0.0659915ms kmax: 1.56052ms klist: 10.94ms
+12.50052
+0.01250052
+insert: 6.87196ms kmax: 266.754ms klist: 1094.18ms
+insert: 0.0687196ms kmax: 2.66754ms klist: 10.9418ms
+
+hollywood09
+insert: 6.65038ms kmax: 13.7209ms klist: 5574.77ms
+insert: 0.0665038ms kmax: 0.137209ms klist: 55.7477ms
+55.884909
+0.055884909
+insert: 6.09209ms kmax: 175.225ms klist: 5564.5ms
+insert: 0.0609209ms kmax: 1.75225ms klist: 55.645ms
+
+hollywood2011
+insert: 6.64775ms kmax: 40.1905ms klist: 9351.49ms
+insert: 0.0664775ms kmax: 0.401905ms klist: 93.5149ms
+93.916805
+0.093916805
+insert: 7.01894ms kmax: 252.084ms klist: 9397.89ms
+insert: 0.0701894ms kmax: 2.52084ms klist: 93.9789ms
+
+uk2002
+insert: 7.7425ms kmax: 23381.5ms klist: 1374.46ms
+insert: 0.077425ms kmax: 233.815ms klist: 13.7446ms
+247.5596
+0.2475596
+insert: 6.73161ms kmax: 6628.34ms klist: 1283.51ms
+insert: 0.0673161ms kmax: 66.2834ms klist: 12.8351ms
+79.1185
+0.0791185
+
+indochina
+insert: 11.7767ms kmax: 25910.7ms klist: 2712.85ms
+insert: 0.117767ms kmax: 259.107ms klist: 27.1285ms
+0
+insert: 8.91455ms kmax: 10469.5ms klist: 2724.46ms
+insert: 0.0891455ms kmax: 104.695ms klist: 27.2446ms
+131.9396
+0.1319396
+
+
+
+CPU INSERT less generous
+email
+196.130463
+
+slashdot
+595.367262
+
+amazon
+1243.700901
+
+pokec
+33814.730639
+
+enwiki
+135849.752984
+
+live journal
+165799.197361
+
+hollywood09
+399346.866511
+
+hollywood2011
+678996.260704
+
+uk2002
+72810.617993
+
+indochina
+187371.43057
+
+CPU INSERT generous
+email
+93.098699
+
+slashdot
+129.720339
+
+amazon
+688.348303
+
+pokec
+7548.269697
+
+enwiki
+22863.597110
+
+live journal
+16301.830295
+
+hollywood09
+18947.045512
+
+hollywood2011
+30110.608525
+
+uk2002
+22664.208179
+
+indochina
+31328.946515
